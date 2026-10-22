@@ -1,0 +1,17 @@
+{
+  "id": "mdisplay",
+  "name": "mDisplay",
+  "version": "0.1.0",
+  "description": "Galaxies, night skies, nebulae and auroras on an HDMI screen",
+  "entrypoint": "run.sh",
+  "icon": "assets/icon.png",
+  "min_os_version": "1.4.0",
+  "repository": "https://github.com/Mengkungkao/mDisplay",
+  "exit_gesture": "none",
+  "disable_esc_exit_key": true,
+  "priority": 40,
+  "test": "test.sh",
+  "persist": [],
+  "env": {},
+  "background": false
+}

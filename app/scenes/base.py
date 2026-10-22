@@ -1,0 +1,134 @@
+"""What every scene is: a lifecycle, a context, and its quality profile.
+
+Lifecycle (driven by ``engine.Engine``):
+
+    prepare()        CPU work only (NumPy, Pillow): runs on a worker thread
+    setup(canvas)    upload textures (render thread)
+    update(dt, t)    advance by dt scene-seconds (0 while paused)
+    draw(canvas)     draw one frame
+    resize(w, h)     the output changed size; return True to be rebuilt
+    settings_changed(keys)  return True to be rebuilt
+    close()          release every texture the scene made
+
+Scenes draw only through ``gfx.canvas.Canvas`` and never touch SDL, the
+window or the input: they do not know which renderer or display is used.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import time
+from dataclasses import dataclass, field
+from typing import Callable, Optional
+
+import numpy as np
+
+from ..gfx.canvas import BLEND, Canvas, Texture
+
+
+@dataclass(frozen=True)
+class Quality:
+    name: str
+    fps: int            # frame-rate cap (0 = the display's refresh rate)
+    stars: float        # star-count multiplier
+    texture: float      # texture-resolution multiplier
+    detail: int         # 0 eco .. 3 ultra: layers, octaves, effects
+
+
+QUALITY = {
+    "eco": Quality("eco", 30, 0.4, 0.5, 0),
+    "balanced": Quality("balanced", 60, 1.0, 0.75, 1),
+    "high": Quality("high", 60, 1.6, 1.0, 2),
+    "ultra": Quality("ultra", 0, 2.4, 1.25, 3),
+}
+
+
+def resolve_quality(setting: str, accelerated: bool) -> Quality:
+    """``auto`` is Balanced with a GPU and Eco with the software renderer; never Ultra."""
+    if setting in QUALITY:
+        return QUALITY[setting]
+    return QUALITY["balanced" if accelerated else "eco"]
+
+
+@dataclass
+class SceneContext:
+    width: int
+    height: int
+    quality: Quality
+    settings: object                      # config.Settings (read only)
+    seed: int = 1
+    accelerated: bool = True
+    wall_clock: Callable[[], float] = time.time
+    max_texture: int = 8192
+    extras: dict = field(default_factory=dict)
+
+    @property
+    def unit(self) -> float:
+        """Resolution-independent size unit: 1.0 at 1080 pixels on the short side."""
+        return min(self.width, self.height) / 1080.0
+
+    def rng(self, salt: str = "") -> np.random.Generator:
+        digest = hashlib.sha256(f"{self.seed}:{salt}".encode()).digest()
+        return np.random.default_rng(int.from_bytes(digest[:8], "little"))
+
+    def texture_size(self, base: int, minimum: int = 64) -> int:
+        """A texture edge for ``base`` pixels at 1080p, scaled by quality and output size."""
+        scale = self.quality.texture * max(self.width, self.height) / 1920.0
+        return int(max(minimum, min(self.max_texture, round(base * scale))))
+
+    def setting(self, key: str, default=None):
+        getter = getattr(self.settings, "get", None)
+        return getter(key, default) if getter else default
+
+
+class Scene:
+    """Base class; see the module docstring for the lifecycle."""
+
+    id = "scene"
+    max_fps: Optional[int] = None         # a calm scene may ask for fewer frames
+
+    def __init__(self, ctx: SceneContext):
+        self.ctx = ctx
+        self.width = ctx.width
+        self.height = ctx.height
+        self.textures: list = []
+        self.t = 0.0
+
+    # -- lifecycle -----------------------------------------------------
+    def prepare(self) -> None:
+        """CPU-only work (worker thread): build arrays, never call the canvas."""
+
+    def setup(self, canvas: Canvas) -> None:
+        """Upload what ``prepare`` built."""
+
+    def resize(self, width: int, height: int) -> bool:
+        self.width, self.height = width, height
+        return False
+
+    def update(self, dt: float, t: float) -> None:
+        self.t = t
+
+    def draw(self, canvas: Canvas) -> None:
+        canvas.clear((0, 0, 0))
+
+    def settings_changed(self, keys: set) -> bool:
+        return False
+
+    def close(self) -> None:
+        for texture in self.textures:
+            texture.destroy()
+        self.textures.clear()
+
+    # -- helpers -------------------------------------------------------
+    def upload(self, canvas: Canvas, rgba: np.ndarray, blend: int = BLEND, name: str = "",
+               linear: bool = True) -> Texture:
+        texture = canvas.texture(rgba, blend=blend, linear=linear, name=f"{self.id}.{name}")
+        self.textures.append(texture)
+        return texture
+
+    def setting(self, key: str, default=None):
+        return self.ctx.setting(key, default)
+
+    @property
+    def unit(self) -> float:
+        return min(self.width, self.height) / 1080.0

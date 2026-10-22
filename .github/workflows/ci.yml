@@ -1,0 +1,30 @@
+# Checks without hardware (docs/TESTING.md). SDL runs with its dummy video
+# driver here, so nothing needs a screen; real-screen and device checks are
+# recorded separately (docs/records/).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Checks and full suite (Python 3.12, mFruit OS real daemon)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages (the same ones a device uses)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libsdl2-2.0-0 python3-numpy python3-pil \
+            python3-pytest python3-dbus python3-gi python3-cryptography
+      - name: mFruit OS checkout (package preflight, SDK copy, real-daemon integration tests)
+        run: git clone --depth 1 https://github.com/Mengkungkao/MFruitOS "$RUNNER_TEMP/MFruitOS"
+      - name: tools/check.sh
+        env:
+          MFRUIT_OS: ${{ runner.temp }}/MFruitOS
+        run: bash tools/check.sh
