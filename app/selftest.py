@@ -25,7 +25,7 @@ MODULES = ("app.main", "app.application", "app.config", "app.controls", "app.eng
            "app.display.sdl2", "app.display.session", "app.display.desktop", "app.gfx.canvas",
            "app.gfx.batch", "app.gfx.noise", "app.gfx.sprites", "app.gfx.palette",
            "app.ui.lcd", "app.ui.overlay", "app.ui.text", "app.scenes.catalog",
-           "app.scenes.base", "app.scenes.parts", "app.scenes.astro")
+           "app.scenes.base", "app.scenes.parts")
 
 
 def check_settings() -> None:
@@ -75,6 +75,8 @@ def check_lcd() -> int:
 
 def check_scenes() -> list:
     os.environ["SDL_VIDEODRIVER"] = "dummy"
+    from .display import sdl2
+    sdl2.SDL()          # the library itself must load (raises SDLError): install.sh fetches it
     from .config import Settings
     from .display.desktop import DesktopDisplay, DisplayUnavailable
     from .engine import Engine

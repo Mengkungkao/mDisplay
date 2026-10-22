@@ -298,5 +298,10 @@ class Canvas:
                                                      buf.ctypes.data, w * 4), "read pixels")
         return buf
 
+    def read_into(self, address: int, pitch: int, pixel_format: int = sdl2.PIXELFORMAT_ARGB8888) -> None:
+        """Copy the finished frame straight into memory (a mapped KMS frame buffer)."""
+        self.sdl.check(self.sdl.SDL_RenderReadPixels(self.renderer, None, pixel_format, address,
+                                                     pitch), "read pixels")
+
     def present(self) -> None:
         self.sdl.SDL_RenderPresent(self.renderer)

@@ -43,6 +43,14 @@ QUALITY = {
 }
 
 
+def resolve_motion(setting: str, accelerated: bool) -> bool:
+    """True for gentle motion: ``auto`` is gentle without a GPU, where frames are few and
+    fast movement would jump; slow drifts and fades stay smooth at any frame rate."""
+    if setting in ("full", "gentle"):
+        return setting == "gentle"
+    return not accelerated
+
+
 def resolve_quality(setting: str, accelerated: bool) -> Quality:
     """``auto`` is Balanced with a GPU and Eco with the software renderer; never Ultra."""
     if setting in QUALITY:
@@ -60,6 +68,10 @@ class SceneContext:
     accelerated: bool = True
     wall_clock: Callable[[], float] = time.time
     max_texture: int = 8192
+    gentle: bool = False
+    # Runs CPU work off the render thread: background(fn, *args) -> Future. None (tests,
+    # synchronous engines): do the work where it is needed.
+    background: Optional[Callable] = None
     extras: dict = field(default_factory=dict)
 
     @property
@@ -132,3 +144,25 @@ class Scene:
     @property
     def unit(self) -> float:
         return min(self.width, self.height) / 1080.0
+
+    @property
+    def software(self) -> bool:
+        """Drawn by SDL's software renderer: scaling and turning images are costly."""
+        return not self.ctx.accelerated
+
+    @property
+    def gentle(self) -> bool:
+        return self.ctx.gentle
+
+    def fit(self, rgba, width: int, height: int):
+        """On the software renderer, scale a texture once to the size it is drawn at, so
+        each frame copies it 1:1 (scaling while blending costs a lot without a GPU)."""
+        if not self.software:
+            return rgba
+        width, height = max(1, int(round(width))), max(1, int(round(height)))
+        if rgba.shape[1] == width and rgba.shape[0] == height:
+            return rgba
+        from PIL import Image
+        resample = getattr(Image, "Resampling", Image).BILINEAR
+        return np.asarray(Image.fromarray(rgba, "RGBA").resize((width, height), resample),
+                          np.uint8).copy()

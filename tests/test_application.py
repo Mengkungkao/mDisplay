@@ -2,6 +2,7 @@
 saved settings, focus, the sleep timer, clean exits and actionable failures.
 SDL's dummy driver stands in for the desktop: nothing appears on a screen."""
 
+import ctypes
 import json
 import os
 import signal
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import time
 import unittest
+from unittest import mock
 
 import numpy as np
 
@@ -281,6 +283,157 @@ class BehaviourTests(AppTestCase):
         from app.scenes.base import resolve_quality
         self.assertEqual(resolve_quality("auto", True).name, "balanced")
         self.assertEqual(resolve_quality("ultra", False).name, "ultra")
+
+
+class MotionTests(AppTestCase):
+    def test_motion_auto_is_gentle_on_the_software_renderer(self):
+        app = self.make()
+        self.pump(app, 2)
+        self.assertTrue(app.gentle)                        # SDL's dummy driver: software
+        scene = (app.engine.current or app.engine.incoming).scene
+        self.assertTrue(scene.gentle)
+        row = next(i for i in app.menu_state() if i.key == "motion")
+        self.assertIn("Auto (Gentle)", row.value)
+
+    def test_changing_motion_rebuilds_the_scene(self):
+        app = self.make()
+        self.pump(app, 2)
+        app.settings.set("motion", "full")
+        app._changed({"motion"})
+        self.pump(app, 2)
+        scene = (app.engine.incoming or app.engine.current).scene
+        self.assertFalse(scene.gentle)
+
+
+class SteadyRateTests(AppTestCase):
+    """The software renderer settles on a frame rate the device keeps up with."""
+
+    def adapt(self, app, work):
+        app.stats.work.clear()
+        for _ in range(45):
+            app.stats.work.append(work)
+        app.adapt_at = 0.0
+        app._adapt_rate()
+        return app.steady_fps
+
+    def test_settles_on_the_fastest_rate_with_room_to_spare(self):
+        app = self.make()
+        self.pump(app, 2)
+        app.engine.fade_start -= 60
+        self.pump(app)
+        self.assertEqual(self.adapt(app, 0.070), 12)       # 83 ms a frame for 70 ms of work
+        self.assertEqual(app.pacer.fps, 12)
+        self.assertEqual(self.adapt(app, 0.030), 24)
+        self.assertEqual(app.pacer.fps, 24)
+
+    def test_rising_needs_more_room_than_staying(self):
+        app = self.make()
+        self.pump(app, 2)
+        app.engine.fade_start -= 60
+        self.pump(app)
+        app.steady_fps = 20
+        self.assertEqual(self.adapt(app, 0.034), 20)       # rising to 24 needs 25% room
+        app.steady_fps = 24
+        self.assertEqual(self.adapt(app, 0.034), 24)       # staying at 24 needs only 10%
+
+    def test_never_above_the_cap_and_not_while_a_scene_loads(self):
+        app = self.make()
+        self.pump(app, 2)
+        app.engine.fade_start -= 60
+        self.pump(app)
+        self.assertLessEqual(self.adapt(app, 0.001), app.rate_cap)
+        before = app.steady_fps
+        with mock.patch.object(type(app.engine), "busy", new_callable=mock.PropertyMock,
+                               return_value=True):
+            self.adapt(app, 0.2)
+        self.assertEqual(app.steady_fps, before)
+
+
+class FakeKms:
+    """Stands in for kms.KmsOutput: frames land in memory, not on a screen."""
+
+    def __init__(self, width=1280, height=720):
+        from app.display import kms
+        self.size = (width, height)
+        self.mode = kms.Mode(width, height, 60, True)
+        self.connector = kms.Connector("/dev/dri/card0", 1, 11, 1, True, [self.mode], 0, [])
+        self.connectors = [self.connector]
+        self.pitch = width * 4
+        self.buffer = (ctypes.c_uint8 * (self.pitch * height))()
+        self.shown = 0
+        self.closed = False
+
+    def describe(self):
+        return "HDMI-A-1 (fake)"
+
+    def show(self, write):
+        write(ctypes.addressof(self.buffer), self.pitch)
+        self.shown += 1
+
+    def frame(self):
+        h = self.size[1]
+        return np.frombuffer(self.buffer, np.uint8).reshape(h, self.pitch // 4, 4)
+
+    def close(self):
+        self.closed = True
+
+
+class DirectHdmiTests(AppTestCase):
+    """No desktop: frames go to the HDMI port (DRM/KMS), drawn at half size."""
+
+    def make_kms(self, out):
+        app = Application(Options(video_driver="dummy", fullscreen=False, synchronous=True, seed=3,
+                                  standalone=True, env=self.env))
+        self.apps.append(app)
+        self.assertTrue(app._use_kms(out, []))
+        return app
+
+    def test_scenes_are_drawn_at_half_size_and_scaled_up_to_the_mode(self):
+        out = FakeKms(1280, 720)
+        app = self.make_kms(out)
+        self.assertEqual(app.display.size, (640, 360))
+        self.assertEqual(app.display.output_size, (1280, 720))
+        self.assertEqual(app.display.video_driver, "kms")
+        self.pump(app, 3)
+        app.engine.fade_start -= 60
+        self.pump(app)
+        self.assertGreater(out.shown, 0)
+        scene = (app.engine.current or app.engine.incoming).scene
+        self.assertEqual((scene.width, scene.height), (640, 360))
+        frame = out.frame()
+        self.assertGreater(frame[..., :3].max(), 40, "nothing reached the HDMI buffer")
+        # The HDMI frame is the drawn frame scaled up 2x, in the screen's byte order
+        # (XRGB8888 in memory: blue, green, red, unused).
+        small = app.display.canvas.read_rgba()[..., :3].astype(np.int16)
+        big = frame[::2, ::2, 2::-1].astype(np.int16)
+        self.assertLess(np.abs(big - small).mean(), 3.0)
+
+    def test_brightness_dims_the_scaled_frame(self):
+        out = FakeKms(1280, 720)
+        app = self.make_kms(out)
+        self.pump(app, 3)
+        app.engine.fade_start -= 60
+        app.handle(controls.PAUSE)
+        self.pump(app, 2)
+        bright = out.frame()[..., :3].astype(np.float32).sum()
+        app.settings.set("brightness", 0.2)
+        app._changed({"brightness"})
+        self.pump(app)
+        dim = out.frame()[..., :3].astype(np.float32).sum()
+        self.assertLess(dim, bright * 0.4)
+        self.assertGreater(dim, 0)
+
+    def test_small_modes_are_drawn_at_full_size(self):
+        app = self.make_kms(FakeKms(1024, 576))
+        self.assertEqual(app.display.size, (1024, 576))
+
+    def test_closing_gives_the_screen_back(self):
+        out = FakeKms(1280, 720)
+        app = self.make_kms(out)
+        self.pump(app)
+        app._shutdown()
+        self.apps.remove(app)
+        self.assertTrue(out.closed)
 
 
 class ProcessTests(unittest.TestCase):

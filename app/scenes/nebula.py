@@ -64,14 +64,25 @@ class NebulaScene(Scene):
         self.layer_px = [gas_layer(rng, tw, th, 4 + q.detail, low, high, cells)
                          for cells, low, high, *_ in self.LAYERS[:layers]]
         self.dust_px = dust_layer(ctx.rng("dust"), tw, th, 4 + q.detail)
+        if self.software:       # drawn 1:1 at a fixed tile size (no slow size breathing)
+            span = self.span
+            self.layer_px = [self.fit(px, span * layer[3], span * layer[3] * th / tw)
+                             for px, layer in zip(self.layer_px, self.LAYERS)]
+            self.dust_px = self.fit(self.dust_px, span * 1.6, span * 1.6 * th / tw)
         capacity, _ = density_count(self.STARS, q, 2.0)
         self.stars = StarField(ctx.rng("stars"), capacity, size=(1.3, 5.0), twinkle=0.2,
                                twinkle_speed=(0.05, 0.5), saturation=0.45)
+        if self.gentle:
+            self.stars.calm()
         brng = ctx.rng("bright")
         self.bright = [(brng.uniform(0.1, 0.9), brng.uniform(0.15, 0.85), brng.uniform(0.6, 1.0),
                         brng.uniform(0, 2 * math.pi)) for _ in range(7)]
         self.grain = Grain(ctx.rng("grain"), q.detail >= 1)
         self.sprites = common_sprites(q)
+
+    @property
+    def span(self) -> float:
+        return max(self.width, self.height * 16 / 9)
 
     def setup(self, canvas) -> None:
         self.layers = [self.upload(canvas, px, ADD, f"gas{i}") for i, px in enumerate(self.layer_px)]
@@ -90,16 +101,19 @@ class NebulaScene(Scene):
                         wrap=True, alpha=0.85)
         intensity = float(self.setting("nebula_intensity", 1.0))
         breathing = 0.9 + 0.1 * math.sin(t / 37.0)
-        span = max(w, h * 16 / 9)
+        span = self.span
         for texture, (cells, _lo, _hi, size, dx, dy, phase, strength) in zip(self.layers,
                                                                              self.LAYERS):
             color = NEBULA.at(t / CYCLE_SECONDS + phase)
             level = strength * intensity * breathing
             tint = tuple(min(255, int(c * level)) for c in color)
-            tile_w = span * size * (1.0 + 0.04 * math.sin(t / (60.0 + 13 * cells) + phase * 6))
-            tile_h = tile_w * texture.height / texture.width
+            if self.software:
+                tile_w, tile_h = texture.width, texture.height
+            else:
+                tile_w = span * size * (1.0 + 0.04 * math.sin(t / (60.0 + 13 * cells) + phase * 6))
+                tile_h = tile_w * texture.height / texture.width
             canvas.tiled(texture, t * dx * u, t * dy * u, tile_w, tile_h, color=tint)
-        dust_w = span * 1.6
+        dust_w = self.dust.width if self.software else span * 1.6
         canvas.tiled(self.dust, t * 2.0 * u + w * 0.3, -t * 1.1 * u, dust_w,
                      dust_w * self.dust.height / self.dust.width)
         for x, y, b, p in self.bright:

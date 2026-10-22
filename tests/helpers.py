@@ -46,13 +46,14 @@ class Offscreen:
         self.canvas.width, self.canvas.height = width, height
         self.target = self.canvas.target(width, height, "test")
 
-    def engine(self, settings=None, clock=None, quality: str = "eco", seed: int = 3) -> Engine:
+    def engine(self, settings=None, clock=None, quality: str = "eco", seed: int = 3,
+               gentle: bool = False) -> Engine:
         settings = settings or Settings()
         clock = clock or FakeClock()
         canvas = self.canvas
         return Engine(canvas, settings,
                       lambda: SceneContext(canvas.width, canvas.height, QUALITY[quality], settings,
-                                           seed=seed, accelerated=False),
+                                           seed=seed, accelerated=False, gentle=gentle),
                       now=clock, synchronous=True)
 
     def frame(self, engine: Engine, brightness: float = 1.0):

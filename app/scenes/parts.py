@@ -61,6 +61,14 @@ class StarField:
         self.size_lo, self.size_hi = size
         self.batch = QuadBatch(n)
 
+    def calm(self, factor: float = 0.35) -> "StarField":
+        """Gentle motion: slower, shallower twinkling, so it stays a smooth fade even at a
+        few frames a second (fast flicker at a low frame rate looks like noise)."""
+        self.f1 *= np.float32(factor)
+        self.f2 *= np.float32(factor)
+        self.depth *= np.float32(0.75)
+        return self
+
     def twinkle(self, t: float, n: int, depth_scale=None) -> np.ndarray:
         a = 0.5 + 0.5 * np.sin(self.f1[:n] * np.float32(TAU * t) + self.p1[:n])
         b = 0.5 + 0.5 * np.sin(self.f2[:n] * np.float32(TAU * t) + self.p2[:n])
@@ -126,13 +134,12 @@ class Meteors:
     and a minimum gap, so they stay occasional and never flash in bursts.
 
     ``per_minute`` is the rate at frequency 1.0; the meteor-frequency setting
-    multiplies it (0 = none). With ``radiant`` (normalised x, y) the trails
-    point away from it and are shorter near it, as in a real shower.
+    multiplies it (0 = none).
     """
 
     def __init__(self, rng: np.random.Generator, per_minute: float = 2.0, max_active: int = 2,
                  min_gap: float = 3.0, speed=(0.35, 0.75), length=(0.07, 0.2), life=(0.55, 1.2),
-                 angles=((20, 65), (115, 160)), area=(0.05, 0.03, 0.95, 0.6), radiant=None,
+                 angles=((20, 65), (115, 160)), area=(0.05, 0.03, 0.95, 0.6),
                  brightness=(0.45, 0.9), fireball: float = 0.03, color=(255, 246, 232),
                  width=4.4):
         self.rng = rng
@@ -144,7 +151,6 @@ class Meteors:
         self.life = life
         self.angles = angles
         self.area = area
-        self.radiant = radiant
         self.brightness = brightness
         self.fireball = fireball
         self.color = color
@@ -179,14 +185,8 @@ class Meteors:
         x = (x0 + (x1 - x0) * rng.random()) * width
         y = (y0 + (y1 - y0) * rng.random()) * height
         length = rng.uniform(*self.length) * diag
-        if self.radiant is not None:
-            rx, ry = self.radiant[0] * width, self.radiant[1] * height
-            angle = math.atan2(y - ry, x - rx)
-            distance = math.hypot(x - rx, y - ry)
-            length *= min(1.0, max(0.2, 2.2 * distance / diag))
-        else:
-            lo, hi = self.angles[int(rng.integers(len(self.angles)))]
-            angle = math.radians(rng.uniform(lo, hi))
+        lo, hi = self.angles[int(rng.integers(len(self.angles)))]
+        angle = math.radians(rng.uniform(lo, hi))
         big = rng.random() < self.fireball
         meteor = Meteor(x, y, angle, rng.uniform(*self.speed) * diag, length,
                         rng.uniform(*self.life) * (1.5 if big else 1.0),

@@ -61,14 +61,6 @@ class MeteorTests(unittest.TestCase):
         for count in counts.values():
             self.assertLess(abs(count - 120), 4 * math.sqrt(120), counts)
 
-    def test_shower_meteors_point_away_from_the_radiant(self):
-        m = Meteors(np.random.default_rng(6), radiant=(0.6, 0.2))
-        rx, ry = 0.6 * 1920, 0.2 * 1080
-        for _ in range(50):
-            meteor = m.spawn(1920, 1080)
-            away = math.atan2(meteor.y - ry, meteor.x - rx)
-            self.assertAlmostEqual(math.cos(meteor.angle - away), 1.0, places=6)
-
     def test_trails_fade_in_and_out(self):
         m = Meteors(np.random.default_rng(7))
         meteor = m.spawn(1920, 1080)

@@ -1,6 +1,6 @@
 # mDisplay
 
-Animated galaxies, night skies, nebulae, auroras, planets and a galaxy
+Animated galaxies, night skies, nebulae, auroras, starlight and a galaxy
 projector on an HDMI screen: an ambient display for an **mFruit OS** device,
 or for any Linux desktop. Everything is generated on the device (procedural
 graphics); no internet connection is needed.
@@ -11,8 +11,7 @@ graphics); no internet connection is needed.
 | Night sky | Twinkling stars (each at its own rate, stronger near the horizon), the Milky Way, drifting clouds, a tree line, meteors |
 | Nebula | Layers of glowing gas drifting at different depths, colours slowly cycling blue, cyan, violet, pink, red |
 | Aurora | Green and cyan curtains with drifting rays over dark mountains |
-| Solar system | The Sun and eight planets, lit from the Sun; illustrative motion, not to scale (see below) |
-| Meteor shower | Meteors streaking away from one radiant, in slow bursts; rare fireballs leave a fading train |
+| Starlight | A clear dark sky where stars slowly fade in, shine and fade out, then return elsewhere; nothing moves |
 | Galaxy projector | Turning nebula clouds and laser stars, like a star projector on a ceiling |
 | Minimal | Sparse, dim stars on near black, for a dark room |
 
@@ -20,11 +19,18 @@ Every scene fills the screen, and by default fades softly to black at the
 screen's border (**Soft edges**), so in a dark room the picture floats without
 a visible rectangle, like projected light.
 
+**Motion** (Auto, Full, Gentle): on a board without a GPU, where only a few
+frames a second can be drawn, Auto chooses *Gentle*: nothing travels across
+the sky (no meteors; the night sky and Minimal hold still), stars twinkle more
+slowly, and what does move (galaxy, gas, curtains, the projector) moves more
+slowly. mDisplay also settles on a steady frame rate the board keeps up with,
+because an even rhythm looks smoother than a faster, uneven one.
+
 ## On an mFruit OS device
 
 mDisplay is a native mFruit OS app (`mdisplay`). mFruit OS launches it from
-Home; the scenes go to the HDMI screen's desktop and the Whisplay LCD becomes
-the remote control.
+Home; the scenes go to the HDMI screen and the Whisplay LCD becomes the remote
+control.
 
 **LCD controls** (the same gestures as everywhere in mFruit OS):
 
@@ -40,11 +46,15 @@ list. A USB or Bluetooth keyboard works too, through mFruit OS: arrows move,
 Enter selects, Esc goes back, Space pauses, B opens Settings, F toggles full
 screen, Q closes.
 
-The HDMI screen needs a desktop session (X11 or Wayland) logged in as the same
-user mFruit OS runs as. mDisplay finds it itself: under mFruit OS it starts
-without `DISPLAY`, so it looks at the user's login sessions and processes and
-uses the first desktop that actually accepts a connection. If there is none,
-the LCD says so and offers **Retry**, **Details** and **Back**.
+**No desktop needed.** When no desktop session runs on the device (the usual
+mFruit OS setup), mDisplay drives the HDMI port itself through Linux DRM/KMS,
+draws with SDL's software renderer at half the screen's resolution and scales
+each frame up once (1280×720 is chosen when the screen offers it). The user
+needs access to `/dev/dri/card*` (the `video` group, as on Orange Pi and
+Raspberry Pi images), and nothing else may be showing on HDMI at the time.
+When a desktop session (X11 or Wayland) *is* running as the same user, mDisplay
+finds it and uses it instead, with the GPU when there is one. If neither works,
+the LCD says why and offers **Retry**, **Details** and **Back**.
 
 ### Install
 
@@ -55,30 +65,29 @@ mfruitctl sideload ~/mDisplay        # install hooks and smoke test run, then it
 mfruitctl launch mdisplay
 ```
 
-What it needs (checked by `install.sh`, which never uses sudo and names what is
-missing):
-
-| Package | Why | Debian, Ubuntu, Raspberry Pi OS |
-|---|---|---|
-| SDL2 2.0.18 or newer | window, GPU or software renderer, keys | `sudo apt install libsdl2-2.0-0` |
-| NumPy | procedural textures | `sudo apt install python3-numpy` (else `install.sh` puts it in a venv with pip) |
-| Pillow 9.0+ | LCD screens, text | `sudo apt install python3-pil` (mFruit OS has it) |
-| a desktop session on the HDMI screen | where the scenes are drawn | your distribution's desktop |
+What it needs: SDL2 2.0.18 or newer, NumPy and Pillow 9.0+. `install.sh`
+checks them and, when one is missing, **fetches it itself without root**: it
+downloads the Debian packages (and what they depend on) with `apt-get
+download` from the device's own apt sources and unpacks them into mDisplay's
+data folder (`sysroot/`), which `run.sh` adds to the library and Python paths.
+Nothing outside that folder changes. It needs a network connection the first
+time; if fetching fails, the install stops and says what to run once instead
+(`sudo apt install libsdl2-2.0-0 python3-numpy python3-pil`).
 
 Removing it: from the Fruit Store's app page, or `mfruitctl uninstall mdisplay`
 (the code goes, the settings in its data folder are kept), then
-`mfruitctl delete mdisplay` to delete those too. mDisplay changes nothing
-outside its own folders (a NumPy venv, if `install.sh` made one, is in the
-data folder).
+`mfruitctl delete mdisplay` to delete those too, with any packages `install.sh`
+fetched. mDisplay changes nothing outside its own folders.
 
 ## On a Linux desktop (no mFruit OS)
 
 ```bash
-./install.sh                 # checks SDL2, Pillow, NumPy (venv only if NumPy is missing)
+./install.sh                 # checks SDL2, Pillow, NumPy; fetches what is missing, no root
 ./run.sh                     # full screen on the saved screen
 ./run.sh --windowed          # in a window
 ./run.sh --scene projector   # start with a scene (not saved)
-./run.sh --diagnose          # what the desktop and graphics offer, and what is missing
+./run.sh --output hdmi       # straight to the HDMI port (DRM/KMS), no desktop
+./run.sh --diagnose          # what the desktop, HDMI and graphics offer, and what is missing
 ./run.sh --list-displays     # the screens, with the names the settings use (DP-0, HDMI-1, …)
 ```
 
@@ -106,13 +115,13 @@ All of them change the running picture at once and are saved. Full list and
 validation: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 Scene · Change scenes (automatic rotation) and Change every · Transition ·
-Speed · Brightness · Soft edges (Off, Soft, Strong) · Stars (density) · Nebula
-glow · Meteors · Projector colours (Cosmic, Ocean, Aurora, Sunset, Rainbow) ·
-Projector lasers (Green, Red, Both, Off) · Projector turning (Off, Slow,
-Medium, Fast) · Quality (Auto, Eco, Balanced, High, Ultra) · Full screen ·
-Screen · Sleep timer and When it ends (Minimal scene, Pause, Close mDisplay) ·
-Scene names · Orbits · Planet names · Clouds · Horizon · Mountains · In the
-background (desktop only: keep going, slow down, pause) · Screen blanking.
+Speed · Motion (Auto, Full, Gentle) · Brightness · Soft edges (Off, Soft,
+Strong) · Stars (density) · Nebula glow · Meteors · Projector colours (Cosmic,
+Ocean, Aurora, Sunset, Rainbow) · Projector lasers (Green, Red, Both, Off) ·
+Projector turning (Off, Slow, Medium, Fast) · Quality (Auto, Eco, Balanced,
+High, Ultra) · Full screen · Screen · Sleep timer and When it ends (Minimal
+scene, Pause, Close mDisplay) · Scene names · Clouds · Horizon · Mountains · In
+the background (desktop only: keep going, slow down, pause) · Screen blanking.
 
 **Quality** Auto is Balanced with a GPU and Eco with SDL's software renderer;
 Ultra is never chosen automatically.
@@ -122,15 +131,7 @@ or closes (under mFruit OS: back to Home). While paused or after the timer,
 the desktop may blank the screen again; mDisplay never changes system power or
 brightness settings.
 
-## About the solar system
-
-The planets *start* at their approximate positions around the Sun for today's
-date (JPL's published mean orbital elements, accurate to about a degree in
-1800–2050; checked in `tests/test_astro.py` against dated equinoxes and
-oppositions). From then on the motion is **sped up and illustrative**, and
-distances and sizes are compressed, not to scale. With *Planet names* on, the
-screen says so. Nothing else in mDisplay is an astronomical model: the night
-sky, constellations-free star fields and the galaxy are artistic.
+The scenes are artistic, not astronomical models.
 
 ## Status — what is verified
 
@@ -140,13 +141,13 @@ sky, constellations-free star fields and the galaxy are artistic.
 | mFruit OS integration (install hooks, Home entry, launch through ApplicationManager, LCD gestures, exit, force stop, relaunch, uninstall) | AUTOMATED against the **real whisplay-daemon code** with a simulated board (`tests/test_mfruitos_integration.py`) |
 | Ubuntu 22.04 stack (Python 3.10, Pillow 9.0.1, NumPy 1.21, SDL 2.0.20; the Orange Pi's) | AUTOMATED: the whole suite passes in an Ubuntu 22.04 root |
 | Keys typed on a real keyboard into the window | NOT VERIFIED (SDL's key handling is tested by injecting events) |
-| Physical **HDMI** output | NOT VERIFIED (no HDMI connection here) |
-| A Whisplay board with a desktop on its HDMI port | NOT VERIFIED (no such board set up) |
+| Direct HDMI (DRM/KMS) on an Orange Pi Zero 2W (1 GB, Ubuntu 22.04, no desktop) | Run on the board on HDMI-A-1 at 1280×720: page flips completed and frame times were measured (every scene, see [the record](docs/records/2026-10-23-board-hdmi-motion.md)); the picture on the monitor NOT VERIFIED by eye |
+| DRM ioctl numbers and structures | AUTOMATED against the Linux UAPI headers |
+| Fetching missing packages without root | AUTOMATED with stand-in apt/dpkg commands, and run in an Ubuntu 22.04 root |
+| A desktop session on a board's HDMI port | NOT VERIFIED (no such board set up) |
 | Wayland | NOT VERIFIED on a live session (discovery is unit-tested) |
-| SDL software renderer | AUTOMATED (dummy driver); not measured on a real slow board |
 
 Developer docs: [architecture](docs/ARCHITECTURE.md) · [adding a scene](docs/SCENES.md) ·
 [display backends](docs/DISPLAY_BACKENDS.md) · [configuration](docs/CONFIGURATION.md) ·
 [troubleshooting](docs/TROUBLESHOOTING.md) · [testing](docs/TESTING.md) ·
 [releasing](docs/RELEASING.md) · [hand-off](CONTINUE.md) · [changes](CHANGELOG.md).
-# mDisplay

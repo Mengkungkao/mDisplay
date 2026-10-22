@@ -15,7 +15,7 @@ import numpy as np
 
 from ..gfx import noise, sprites
 from ..gfx.batch import Mesh
-from ..gfx.canvas import ADD, BLEND
+from ..gfx.canvas import ADD, BLEND, NONE
 from .base import Scene
 from .parts import Grain, StarField, common_sprites, density_count, ridge_line, silhouette, sky_gradient
 
@@ -23,6 +23,22 @@ from .parts import Grain, StarField, common_sprites, density_count, ridge_line, 
 CURTAIN = ((0.0, (90, 255, 170), 0.0), (0.03, (110, 255, 175), 1.0), (0.1, (70, 255, 160), 0.8),
            (0.4, (50, 230, 180), 0.5), (0.68, (50, 150, 215), 0.2), (1.0, (130, 80, 210), 0.0))
 SKY = [(0.0, (1, 2, 7)), (0.6, (2, 6, 14)), (1.0, (4, 10, 18))]
+GLOW_COLOR = (40, 200, 120)
+GLOW_PEAK = 28              # alpha of the glow behind the curtains at full activity
+GLOW_MEAN = 20              # baked in at about the average activity (software renderer)
+CURTAIN_GENTLE = 0.4        # curtains move at 40% in gentle motion
+
+
+def bake_glow(sky: np.ndarray, color, level: float) -> np.ndarray:
+    """The glow ``draw`` adds (an ellipse 1.6 x 0.8 of the screen, centred at 0.5, 0.55)
+    added into the sky image once."""
+    h, w = sky.shape[:2]
+    y, x = np.mgrid[0:h, 0:w].astype(np.float32)
+    r = np.hypot((x + 0.5 - 0.5 * w) / (0.8 * w), (y + 0.5 - 0.55 * h) / (0.4 * h))
+    alpha = (1.0 - np.clip(r, 0, 1)) ** 1.6 * level
+    out = sky.astype(np.float32)
+    out[..., :3] += alpha[..., None] * np.asarray(color, np.float32)
+    return np.clip(out + 0.5, 0, 255).astype(np.uint8)
 
 
 class Curtain:
@@ -80,8 +96,10 @@ class AuroraScene(Scene):
     def prepare(self) -> None:
         ctx, q = self.ctx, self.ctx.quality
         w, h = self.width, self.height
-        tex = min(1.0, q.texture + 0.25)
+        tex = 1.0 if self.software else min(1.0, q.texture + 0.25)
         self.sky_px = sky_gradient(ctx.rng("sky"), max(64, int(w * tex)), max(64, int(h * tex)), SKY)
+        if self.software:       # the green glow baked in: a big ADD pass a frame costs a lot
+            self.sky_px = bake_glow(self.sky_px, GLOW_COLOR, GLOW_MEAN / 255.0)
         self.mountain_px = None
         if self.setting("mountains", True):
             mh = max(48, int(h * 0.32))
@@ -110,11 +128,13 @@ class AuroraScene(Scene):
         capacity, _ = density_count(self.STARS, q, 2.0)
         self.stars = StarField(ctx.rng("stars"), capacity, region=(0, 0, 1, 0.8), size=(1.3, 5.0),
                                twinkle=0.35, twinkle_speed=(0.1, 1.0), saturation=0.4)
+        if self.gentle:
+            self.stars.calm()
         self.grain = Grain(ctx.rng("grain"), q.detail >= 1)
         self.sprites = common_sprites(q)
 
     def setup(self, canvas) -> None:
-        self.sky = self.upload(canvas, self.sky_px, BLEND, "sky")
+        self.sky = self.upload(canvas, self.sky_px, NONE, "sky")
         self.mountains = self.upload(canvas, self.mountain_px, BLEND, "mountains") \
             if self.mountain_px is not None else None
         self.star_tex = self.upload(canvas, self.sprites["star"], name="star")
@@ -137,11 +157,12 @@ class AuroraScene(Scene):
         self.stars.draw(canvas, self.star_tex, t, w, h, count=count, offset_x=-t * 0.8 * self.unit,
                         wrap=True, alpha=0.7)
         activity = self.level(t)
-        glow = int(28 * activity)
-        canvas.centered(self.glow_tex, w * 0.5, h * 0.55, w * 1.6, h * 0.8, color=(40, 200, 120),
-                        alpha=glow)
+        if not self.software:
+            canvas.centered(self.glow_tex, w * 0.5, h * 0.55, w * 1.6, h * 0.8, color=GLOW_COLOR,
+                            alpha=int(GLOW_PEAK * activity))
+        motion = t * (CURTAIN_GENTLE if self.gentle else 1.0)
         for curtain in self.curtains:
-            curtain.update_mesh(t, w, h, activity)
+            curtain.update_mesh(motion, w, h, activity)
             curtain.mesh.draw(canvas, None, ADD)
         if self.mountains is not None:
             canvas.image(self.mountains, 0, h * 0.68, w, h * 0.32)

@@ -112,7 +112,7 @@ class Engine:
             return False
         log.info("scene %s requested (%s)", scene_id, reason)
         self.pending_id = scene_id
-        context = self.make_context()
+        context = self._context()
         cls = catalog.load(scene_id)
         if self.synchronous:
             future: Future = Future()
@@ -128,6 +128,12 @@ class Engine:
         self.last_change = self.now()
         self.poll()
         return True
+
+    def _context(self) -> SceneContext:
+        context = self.make_context()
+        if self.executor is not None:
+            context.background = self.executor.submit
+        return context
 
     @staticmethod
     def _prepare(cls, context):
@@ -268,10 +274,27 @@ class Engine:
             from .gfx import sprites
             if self.edges is not None:
                 self.edges.destroy()
-            self.edges = canvas.texture(sprites.screen_edges(canvas.width, canvas.height, mode),
+            # The software renderer copies 1:1 far faster than it scales while blending.
+            size = 384 if canvas.accelerated else max(canvas.width, canvas.height)
+            self.edges = canvas.texture(sprites.screen_edges(canvas.width, canvas.height, mode, size),
                                         MOD, name="engine.edges")
             self.edges_key = key
-        canvas.image(self.edges, 0, 0, canvas.width, canvas.height)
+        w, h = canvas.width, canvas.height
+        if mode != "soft":
+            canvas.image(self.edges, 0, 0, w, h)
+            return
+        # Only the border changes anything (the middle is white): four strips are far
+        # cheaper than a full-screen multiply on the software renderer.
+        from .gfx.sprites import EDGE_WIDTHS
+        tex = self.edges
+        sx, sy = tex.width / w, tex.height / h
+        # Whole pixels: the software renderer truncates fractional rectangles.
+        b = min(min(w, h) // 2 - 1, int(EDGE_WIDTHS["soft"] * min(w, h)) + 3)
+        tx, ty = max(1, round(b * sx)), max(1, round(b * sy))
+        canvas.image(tex, 0, 0, w, b, src=(0, 0, tex.width, ty))
+        canvas.image(tex, 0, h - b, w, b, src=(0, tex.height - ty, tex.width, ty))
+        canvas.image(tex, 0, b, b, h - 2 * b, src=(0, ty, tx, tex.height - 2 * ty))
+        canvas.image(tex, w - b, b, b, h - 2 * b, src=(tex.width - tx, ty, tx, tex.height - 2 * ty))
 
     def _draw_slot(self, slot: Slot) -> None:
         try:
@@ -324,7 +347,7 @@ class Engine:
         if current_id == scene_id:
             # request() ignores the scene already showing; force a new copy.
             self.pending_id = None
-            context = self.make_context()
+            context = self._context()
             cls = catalog.load(scene_id)
             if self.synchronous:
                 future: Future = Future()

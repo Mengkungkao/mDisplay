@@ -32,9 +32,11 @@ mFruit OS launcher ── ApplicationManager ── whisplay-daemon app.launch �
 
 mDisplay is an mFruit OS **application** (layer A). It changes nothing in
 mFruit OS: no platform module, manifest field, daemon behaviour or Whisplay
-driver file. The HDMI screen belongs to the desktop session (X11 or Wayland),
-not to whisplay-daemon; mDisplay is an ordinary client of that desktop, the
-way an app is a client of the sound server. The Whisplay framebuffer is only
+driver file. When a desktop session (X11 or Wayland) runs, the HDMI screen
+belongs to it and mDisplay is an ordinary client of that desktop, the way an
+app is a client of the sound server. Without one (the usual mFruit OS device),
+mDisplay drives the HDMI port itself through DRM/KMS and gives it back to the
+console on exit ([display backends](DISPLAY_BACKENDS.md)). The Whisplay framebuffer is only
 ever used through the daemon, for the 240×280 LCD.
 
 ## Decisions
@@ -122,13 +124,21 @@ is prepared, then they cross-fade. Text is drawn on the render thread only
   brightness is a black overlay; overlays (panel, toasts) are drawn last.
 - Dark gradients are dithered, and on GPU renderers a moving grain tile hides
   8-bit banding.
+- SDL's software renderer (a board without a GPU) is costly when it scales or
+  turns images while blending, so scenes there pre-scale textures to the size
+  they are drawn at (`Scene.fit`), bake fixed glows into the sky, and the
+  galaxy is composed with Pillow at whole-degree steps (the next step on the
+  engine's worker thread) and blended between steps. The application then
+  settles on a steady frame rate from `STEADY_RATES` that the device keeps up
+  with, measured every 3 s, and **gentle motion** (the `motion` setting, Auto =
+  gentle without a GPU) keeps anything from travelling across the sky.
 
 ## Failure handling
 
 | Failure | Behaviour |
 |---|---|
-| No desktop / not allowed to connect | standalone: message + exit code 3; under mFruit OS: LCD *No HDMI desktop* with Retry / Details / Back (no retry loop) |
-| SDL2 or NumPy missing | exit code 4 / LCD *Software missing*; `install.sh` refuses to install with the apt command to run |
+| No desktop / not allowed to connect | direct HDMI; if that fails too (no screen connected, no access to `/dev/dri`, the screen in use): standalone message + exit code 3; under mFruit OS LCD *No HDMI desktop* with Retry / Details / Back (no retry loop) |
+| SDL2, NumPy or Pillow missing | `install.sh` fetches the Debian packages without root into the data folder; if that fails it refuses to install and names the apt command; at run time exit code 4 / LCD *Software missing* |
 | No GPU renderer | SDL's software renderer, Eco quality, noted in `--diagnose` |
 | A scene raises | it is closed and reported; Minimal takes over |
 | Saved screen not connected | shown on the first screen with a visible notice, never silently |
@@ -143,6 +153,4 @@ is prepared, then they cross-fade. Text is drawn on the render thread only
 - Several screens at once (different scenes per screen, mirroring): the
   display layer enumerates every screen and the window can move between them,
   but one window is drawn. See [display backends](DISPLAY_BACKENDS.md).
-- DRM/KMS output for a board without a desktop (SDL can do it; the
-  integration with the console has not been designed).
 - Real-sky rendering (constellations for a location and time).

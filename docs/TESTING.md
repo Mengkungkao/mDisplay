@@ -17,15 +17,16 @@ clean-up).
 
 | Level | What | Where |
 |---|---|---|
-| Unit | settings, timing, meteors, planet positions, session discovery, key names, menus | `test_config.py`, `test_timing.py`, `test_meteors.py`, `test_astro.py`, `test_session.py` |
-| Rendering (offscreen, software renderer) | every scene at three sizes and shapes; animates; holds still when paused; same seed same picture; 24 vs 60 fps same picture; round Sun at every aspect ratio; settings change the picture; resizing; soft edges black at the border; projector options and corner coverage; no texture left behind | `test_scenes.py`, `test_engine.py` |
-| Application (SDL dummy driver) | window keys, panel, every menu row changes something, reset needs two presses, saved settings (command-line choices not saved), corrupt file, focus, minimise, idle when paused, sleep timer actions, resize; as a process: run + screenshot + stats, SIGTERM exit 0 within 3 s, actionable errors | `test_application.py` |
+| Unit | settings (and removed scenes' migration), timing and frame pacing, meteors, session discovery, key names, menus; DRM ioctl numbers and structures against the kernel headers, choice of HDMI connector and mode; fetching missing packages without root (stand-in apt/dpkg) | `test_config.py`, `test_timing.py`, `test_meteors.py`, `test_session.py`, `test_kms.py`, `test_deps.py` |
+| Rendering (offscreen, software renderer) | every scene at three sizes and shapes; animates; holds still when paused; same seed same picture; 24 vs 60 fps same picture; settings change the picture; resizing; soft edges black at the border; projector options and corner coverage; no texture left behind | `test_scenes.py`, `test_engine.py` |
+| Motion (offscreen) | gentle motion: every scene draws and moves; no meteors and no drift in the night sky and Minimal; projector at half speed; Starlight: smooth fades, nothing moves while lit, stars return elsewhere; the software galaxy composed once per step (not per frame), equal to what the renderer draws, the next step in the background, no jump at a step | `test_motion.py` |
+| Application (SDL dummy driver) | direct HDMI with a stand-in KMS output (drawn at half size, scaled up in the screen's byte order, brightness, screen given back); steady frame rate choice; motion setting; window keys, panel, every menu row changes something, reset needs two presses, saved settings (command-line choices not saved), corrupt file, focus, minimise, idle when paused, sleep timer actions, resize; as a process: run + screenshot + stats, SIGTERM exit 0 within 3 s, actionable errors | `test_application.py` |
 | LCD remote (SDK `InputController`, unthreaded, fake clock) | every gesture on every screen; each scene chosen from the Scenes list; nothing acts or draws without the LCD; keys pressed elsewhere ignored; every screen inside mFruit OS's chrome; LCD menu = HDMI panel rows | `test_remote.py` |
 | Daemon contract (scripted daemon) | Esc claimed before the screen; first frame; focus revoked/regained with a new framebuffer; exit request; focus released | `test_whisplay_lifecycle.py` |
 | mFruit OS integration (REAL whisplay-daemon + REAL launcher, simulated board) | sideload with hooks, Home entry, launch through ApplicationManager, Scenes list and Settings by button gestures, exit by 4×, relaunch keeps settings, daemon exit request, force stop, uninstall | `test_mfruitos_integration.py` (needs `MFRUIT_OS`) |
 | Package | manifest per the app contract, hooks, smoke test, SDK and contract copies, `check-app.py`, release archive | `test_package.py` |
 | Live desktop | the window and full screen on a real monitor, real keys, measured frame times | by hand, recorded in `docs/records/` |
-| Device | a Whisplay board with a desktop on HDMI | NOT VERIFIED (see the README's status table) |
+| Device | Orange Pi Zero 2W, direct HDMI: per-scene frame times measured on the board ([record](records/2026-10-23-board-hdmi-motion.md)); the picture by eye and a desktop on a board's HDMI NOT VERIFIED | by hand |
 
 ## Measuring
 
@@ -52,8 +53,8 @@ screen; a screenshot shows composition, not animation.
 5. Leave it 30 minutes: smooth, no growth in memory (`--stats`).
 6. `Esc`: closes; the terminal shows exit status 0.
 
-On an mFruit OS board with a desktop on HDMI, additionally: launch from
+On an mFruit OS board (no desktop: direct HDMI), additionally: launch from
 Home; the LCD shows the remote within a second; button and keyboard each
 choose a scene from the Scenes list; 4× from the remote returns to Home and
-the HDMI window closes; Settings → Sleep timer → Close mDisplay returns to
+the console comes back on HDMI; Settings → Sleep timer → Close mDisplay returns to
 Home when it ends.

@@ -31,13 +31,46 @@ App id `mdisplay`, name "mDisplay" (the owner named the project; the brief's
   Not done, and needing the owner's decision: one mFruit OS Home entry per
   scene (one manifest is one app; it would mean eight packages).
 
+## Session 2026-10-22/23: device install, direct HDMI, smooth on the board (0.2.0)
+
+Owner's requests, in order: (1) the Store install failed with exit code 1 on
+the Orange Pi (cause: SDL2 missing; `install.sh` stopped as designed);
+(2) "check for missing requirements and download/install them automatically,
+and work without a desktop"; (3) on the 1 GB Orange Pi Zero 2W, slower,
+smooth motion — fades rather than fast movement; (4) "no need for the solar
+system; the meteor shower needs no moving objects; some scenes only need a
+clear background and a bunch of stars fading in and out".
+
+Done (IMPLEMENTED, AUTOMATED; board numbers in
+docs/records/2026-10-23-board-hdmi-motion.md):
+
+- `app/deps.py` + `install.sh`: missing SDL2/NumPy/Pillow fetched without root
+  (`apt-get download` + `dpkg-deb -x` into `<data>/sysroot`, `env.sh` sourced by
+  `run.sh`/`test.sh`). A root install from a hook was refused: mFruit OS ADR 0011.
+- `app/display/kms.py`: direct HDMI through DRM/KMS when there is no desktop
+  (`--output auto|desktop|hdmi`); half-size drawing + `SDL_SoftStretchLinear`.
+- Motion setting (Auto = Gentle without a GPU); steady frame rate
+  (`STEADY_RATES`); pacer fix (a late frame no longer adds a whole interval);
+  software-renderer pre-scaling; galaxy composed with Pillow in the background.
+- Scenes: **Starlight** added; **Solar system** and **Meteor shower** removed
+  (`catalog.RETIRED` maps saved settings to Galaxy/Starlight); in gentle motion
+  no meteors and the night sky and Minimal hold still. My reading of request (4);
+  the owner may want something else.
+- Version 0.2.0 (manifest, `app/__init__.py`, CHANGELOG). Not released: the
+  owner commits, pushes and tags; then update MFruitOS `config/catalog.json`
+  (version, url, sha256, description without "needs a desktop"; the
+  `system_packages` list can stay or go now that install.sh fetches them).
+
+Not verified: the picture on the board's monitor by eye; 0.2.0 launched from
+mFruit OS Home on the board; package fetching on a real device lacking them.
+
 ## Status
 
 | # | Step | Status |
 |---|---|---|
 | D1 | Audit of mFruit OS (app contract, SDK 1.5.0, lifecycle, daemon, installer); baseline `scripts/check.sh` green (781 tests) | DONE |
 | D2 | SDL2 host: session discovery (env, loginctl, user processes, sockets; verified by connecting), window, displays (SDL + xrandr names), GPU/software renderer, events, full screen (desktop mode), cursor | IMPLEMENTED, AUTOMATED |
-| D3 | Engine: 8 scenes, worker-thread preparation, cross-fades, rotation, pause, sleep timer, soft edges, failure fallback; quality presets | IMPLEMENTED, AUTOMATED |
+| D3 | Engine: 7 scenes (8 until 0.2.0), worker-thread preparation, cross-fades, rotation, pause, sleep timer, soft edges, failure fallback; quality presets | IMPLEMENTED, AUTOMATED |
 | D4 | Scenes incl. Galaxy projector | IMPLEMENTED, AUTOMATED; looks reviewed in GPU previews |
 | D5 | Settings, HDMI panel, LCD remote incl. Scenes list | IMPLEMENTED, AUTOMATED |
 | D6 | Package: manifest, hooks, icon, smoke test, release build, CI + release workflows | IMPLEMENTED; `check-app.py` passes; workflows not yet run on GitHub |

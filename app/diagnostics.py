@@ -105,8 +105,18 @@ def collect(env=None, open_display: bool = True) -> dict:
                                  "ok": c.ok, "result": c.message} for c in found.checks]
     report["session"] = found.chosen.describe() if found.chosen else None
     report["headless"] = found.headless
+    report["hdmi_direct"] = _kms_report()
+    direct = next((c for c in report["hdmi_direct"] if c.get("connected") and c.get("external")), None)
     if found.chosen is None:
-        problems.append((found.problem, found.remedy))
+        if direct is not None:
+            report["notes"].append(f"No desktop session: mDisplay draws directly on "
+                                   f"{direct['connector']} (DRM/KMS, software rendering).")
+        elif report["hdmi_direct"]:
+            problems.append(("No desktop session, and no screen is connected to HDMI.",
+                             "Connect a TV or monitor to HDMI (mDisplay then draws on it "
+                             "directly), or log in to a desktop."))
+        else:
+            problems.append((found.problem, found.remedy))
     if sdl is not None and found.chosen is not None and open_display:
         sessions.apply(found.chosen)
         report.update(_probe_display(sdl))
@@ -114,6 +124,14 @@ def collect(env=None, open_display: bool = True) -> dict:
             problems.append(problem)
         report["opengl"] = _gl_info()
     return report
+
+
+def _kms_report() -> list:
+    try:
+        from .display import kms
+        return kms.survey()
+    except Exception as exc:          # diagnostics must not fail on an odd driver
+        return [{"error": str(exc)}]
 
 
 def _probe_display(sdl) -> dict:
@@ -176,6 +194,17 @@ def text_report(report: dict) -> str:
             lines.append(f"  {attempt['renderer']} unavailable: {attempt['error']}")
     for key, value in (report.get("opengl") or {}).items():
         lines.append(f"{key}: {value}")
+    for c in report.get("hdmi_direct", []):
+        if "error" in c:
+            lines.append(f"DRM {c.get('card', '')}: {c['error']}")
+        else:
+            modes = ", ".join(c["modes"][:4]) + (" …" if len(c["modes"]) > 4 else "")
+            lines.append(f"DRM {c['card']} {c['connector']}: "
+                         f"{'connected' if c['connected'] else 'not connected'}"
+                         f"{'' if c['external'] else ' (built-in, not used)'}"
+                         + (f"; modes {modes}" if c["connected"] else ""))
+    for note in report.get("notes", []):
+        lines.append(note)
     m = report["mfruit_os"]
     daemon = m["daemon"]
     lines.append(f"mFruit OS: {'started by mFruit OS' if m['managed'] else 'run by hand'}; "
@@ -213,6 +242,7 @@ def main(args) -> int:
         print(json.dumps(serializable, indent=2))
     else:
         print(text_report(report))
-    fatal = report.get("session") is None or report["dependencies"].get("SDL2") is None \
-        or report["dependencies"].get("numpy") is None
+    direct = any(c.get("connected") and c.get("external") for c in report.get("hdmi_direct", []))
+    fatal = (report.get("session") is None and not direct) \
+        or report["dependencies"].get("SDL2") is None or report["dependencies"].get("numpy") is None
     return 3 if fatal else 0

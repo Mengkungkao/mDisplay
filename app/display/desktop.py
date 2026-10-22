@@ -132,6 +132,8 @@ class DesktopDisplay:
         self._wake = None
         self._video = False
         self.cursor_visible = True
+        self.kms = None            # a kms.KmsOutput when frames go straight to HDMI (no desktop)
+        self._scan = None          # scan_out: (frame buffer, its SDL surface, target surfaces)
 
     # -------------------------------------------------------------- open
     def open(self) -> "DesktopDisplay":
@@ -262,18 +264,65 @@ class DesktopDisplay:
     # ------------------------------------------------------------ control
     @property
     def size(self) -> tuple:
+        """The size scenes draw at (with ``kms``, possibly smaller than the HDMI mode)."""
         if self.canvas is None:
             return 0, 0
         return self.canvas.refresh_size()
 
+    @property
+    def output_size(self) -> tuple:
+        """The size of the picture on the screen: the window, or the HDMI mode."""
+        if self.kms is not None:
+            return self.kms.size
+        return self.size
+
+    def scan_out(self, address: int, pitch: int) -> None:
+        """Write the finished frame into a mapped KMS frame buffer of ``kms.size``
+        (XRGB8888, which is SDL's ARGB8888), scaled up with linear filtering when it
+        was drawn smaller: one read of the small frame and one stretch, no copies."""
+        w, h = self.size
+        ow, oh = self.kms.size
+        if (w, h) == (ow, oh):
+            self.canvas.read_into(address, pitch)
+            return
+        sdl = self.sdl
+        if self._scan is None or self._scan[3] != (w, h, ow, oh):
+            self._free_scan()
+            frame = (ctypes.c_uint8 * (w * h * 4))()
+            surface = sdl.SDL_CreateRGBSurfaceWithFormatFrom(ctypes.addressof(frame), w, h, 32,
+                                                             w * 4, sdl2.PIXELFORMAT_ARGB8888)
+            if not surface:
+                raise sdl2.SDLError(f"frame surface: {sdl.error()}")
+            self._scan = (frame, surface, {}, (w, h, ow, oh))
+        frame, surface, targets, _sizes = self._scan
+        target = targets.get((address, pitch))
+        if target is None:
+            target = sdl.SDL_CreateRGBSurfaceWithFormatFrom(address, ow, oh, 32, pitch,
+                                                            sdl2.PIXELFORMAT_ARGB8888)
+            if not target:
+                raise sdl2.SDLError(f"frame buffer surface: {sdl.error()}")
+            targets[(address, pitch)] = target
+        self.canvas.read_into(ctypes.addressof(frame), w * 4)
+        sdl.check(sdl.SDL_SoftStretchLinear(surface, None, target, None), "scale up")
+
+    def _free_scan(self) -> None:
+        if self._scan is not None:
+            _frame, surface, targets, _sizes = self._scan
+            for target in targets.values():
+                self.sdl.SDL_FreeSurface(target)
+            self.sdl.SDL_FreeSurface(surface)
+            self._scan = None
+
     def set_vsync(self, on: bool) -> bool:
-        if self.renderer is None:
-            return False
+        if self.renderer is None or self.kms is not None:
+            return False          # KMS output waits for the vertical blank itself
         ok = self.sdl.SDL_RenderSetVSync(self.renderer, 1 if on else 0) == 0
         self.vsync = on if ok else False
         return ok
 
     def set_fullscreen(self, on: bool) -> bool:
+        if self.kms is not None:
+            return True           # straight to HDMI is always the whole screen
         if self.window is None:
             return False
         flags = sdl2.WINDOW_FULLSCREEN_DESKTOP if on else 0
@@ -290,6 +339,8 @@ class DesktopDisplay:
 
     def move_to(self, key: str) -> str:
         """Show the window on another display; returns a notice ('' when done)."""
+        if self.kms is not None:
+            return "The new screen is used the next time mDisplay opens."
         self.displays_cache = self.list_displays()
         info, notice = pick_display(self.displays_cache, key)
         if info is None or notice:
@@ -351,6 +402,10 @@ class DesktopDisplay:
     # -------------------------------------------------------------- close
     def close(self) -> None:
         sdl = self.sdl
+        self._free_scan()
+        if self.kms is not None:
+            self.kms.close()      # the console comes back on the HDMI screen
+            self.kms = None
         if self.canvas is not None:
             self.canvas.destroy_all()
             self.canvas = None

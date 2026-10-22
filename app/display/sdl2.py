@@ -102,6 +102,8 @@ SCALE_LINEAR = 1
 PIXELFORMAT_ABGR8888 = 0x16762004
 PIXELFORMAT_RGBA8888 = 0x16462004
 PIXELFORMAT_RGBA32 = PIXELFORMAT_ABGR8888 if sys.byteorder == "little" else PIXELFORMAT_RGBA8888
+# DRM's XRGB8888 (bytes B, G, R, X on little-endian) is SDL's ARGB8888.
+PIXELFORMAT_ARGB8888 = 0x16362004
 
 # Keycodes (SDL_Keycode); scancode-based keys carry bit 30.
 _SC = 1 << 30
@@ -225,6 +227,7 @@ _SIGNATURES = {
     "SDL_CreateRGBSurfaceWithFormatFrom": (c_void_p, [c_void_p, c_int, c_int, c_int, c_int,
                                                       c_uint32]),
     "SDL_FreeSurface": (None, [c_void_p]),
+    "SDL_SoftStretchLinear": (c_int, [c_void_p, POINTER(Rect), c_void_p, POINTER(Rect)]),
     "SDL_PollEvent": (c_int, [c_void_p]),
     "SDL_WaitEventTimeout": (c_int, [c_void_p, c_int]),
     "SDL_PushEvent": (c_int, [c_void_p]),

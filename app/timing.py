@@ -62,12 +62,11 @@ class FramePacer:
         return max(0.0, self.deadline - self.now())
 
     def frame_done(self) -> None:
-        """Schedule the next deadline; if more than a frame behind, restart from now."""
+        """Schedule the next deadline. A frame that ran late makes the next one due now
+        (not an interval later, and never a burst of catch-up frames)."""
         current = self.now()
         self.deadline += self.interval
-        if self.deadline < current - self.interval:
-            self.deadline = current + self.interval
-        elif self.deadline < current:
+        if self.deadline < current:
             self.deadline = current
 
     def restart(self) -> None:

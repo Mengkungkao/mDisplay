@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..gfx import noise
-from ..gfx.canvas import ADD, BLEND
+from ..gfx.canvas import ADD, BLEND, NONE
 from .base import Scene
 from .parts import (Grain, Meteors, StarField, add_trees, common_sprites, density_count,
                     ridge_line, silhouette, sky_gradient)
@@ -30,7 +30,8 @@ class NightSkyScene(Scene):
         q = ctx.quality
         w, h = self.width, self.height
         tex = min(1.0, q.texture + 0.25)
-        gw, gh = max(64, int(w * tex)), max(64, int(h * tex))
+        sky = 1.0 if self.software else tex           # software: draw it 1:1
+        gw, gh = max(64, int(w * sky)), max(64, int(h * sky))
         self.gradient_px = sky_gradient(ctx.rng("sky"), gw, gh, SKY, dither=1.2)
         self.horizon_h = 0.0
         self.horizon_px = None
@@ -56,12 +57,16 @@ class NightSkyScene(Scene):
         by = -0.08 + 0.9 * (picks // mw_w + brng.random(len(picks))) / mw_h
         self.band_stars = StarField(brng, 0, size=(1.2, 3.6), twinkle=0.3, saturation=0.4,
                                     faintness=2.0, positions=(bx, by))
+        self.milkyway_px = self.fit(self.milkyway_px, w, h * 0.9)
         # Clouds: a tileable layer, dark where dense, faintly lit underneath
         # (light from towns below the horizon), faded at its top and bottom.
         self.cloud_px = None
         if self.setting("clouds", True):
             cw, ch = max(128, int(w * 0.7 * tex)), max(64, int(h * 0.3 * tex))
             self.cloud_px = clouds(ctx.rng("clouds"), cw, ch, q.detail)
+            # Two layers at two scales; on the software renderer each is pre-scaled.
+            self.cloud_far_px = self.fit(self.cloud_px, w * 1.2, h * 0.34)
+            self.cloud_near_px = self.fit(self.cloud_px, w * 1.5, h * 0.374)
         capacity, _ = density_count(self.STARS, q, 2.0)
         self.stars = StarField(ctx.rng("stars"), capacity, region=(0, 0, 1, 0.95),
                                size=(1.5, 6.0), twinkle=0.45, twinkle_speed=(0.2, 1.6),
@@ -69,24 +74,33 @@ class NightSkyScene(Scene):
         self.bright = StarField(ctx.rng("bright"), self.BRIGHT, region=(0, 0.02, 1, 0.8),
                                 size=(12.0, 30.0), twinkle=0.35, twinkle_speed=(0.3, 1.4),
                                 saturation=0.6, faintness=0.35)
-        self.meteors = Meteors(ctx.rng("meteors"), per_minute=1.5, max_active=2, min_gap=4.0,
-                               area=(0.05, 0.04, 0.95, 0.5))
+        # Gentle motion: nothing crosses the sky; the stars only fade and twinkle.
+        self.meteors = None if self.gentle else Meteors(
+            ctx.rng("meteors"), per_minute=1.5, max_active=2, min_gap=4.0,
+            area=(0.05, 0.04, 0.95, 0.5))
+        if self.gentle:
+            for field in (self.stars, self.bright, self.band_stars):
+                field.calm()
         self.grain = Grain(ctx.rng("grain"), q.detail >= 1)
         self.sprites = common_sprites(q)
 
     def setup(self, canvas) -> None:
-        self.gradient = self.upload(canvas, self.gradient_px, BLEND, "sky")
+        self.gradient = self.upload(canvas, self.gradient_px, NONE, "sky")
         self.milkyway = self.upload(canvas, self.milkyway_px, ADD, "milkyway")
         self.horizon = self.upload(canvas, self.horizon_px, BLEND, "horizon") \
             if self.horizon_px is not None else None
-        self.cloud = self.upload(canvas, self.cloud_px, BLEND, "clouds") \
-            if self.cloud_px is not None else None
+        self.cloud = self.cloud_near = None
+        if self.cloud_px is not None:
+            self.cloud = self.upload(canvas, self.cloud_far_px, BLEND, "clouds")
+            self.cloud_near = self.cloud if self.cloud_near_px is self.cloud_px else \
+                self.upload(canvas, self.cloud_near_px, BLEND, "clouds-near")
         self.star_tex = self.upload(canvas, self.sprites["star"], name="star")
         self.spike_tex = self.upload(canvas, self.sprites["spike"], name="spike")
         self.glow_tex = self.upload(canvas, self.sprites["glow"], name="glow")
         self.streak_tex = self.upload(canvas, self.sprites["streak"], name="streak")
         self.grain.setup(self, canvas)
         self.gradient_px = self.milkyway_px = self.horizon_px = self.cloud_px = None
+        self.cloud_far_px = self.cloud_near_px = None
         self.sprites = None
 
     def settings_changed(self, keys: set) -> bool:
@@ -94,17 +108,21 @@ class NightSkyScene(Scene):
 
     def update(self, dt: float, t: float) -> None:
         self.t = t
-        self.meteors.update(dt, float(self.setting("meteor_frequency", 1.0)), self.width,
-                            self.height * (1.0 - 0.2 * bool(self.horizon)))
+        if self.meteors is not None:
+            self.meteors.update(dt, float(self.setting("meteor_frequency", 1.0)), self.width,
+                                self.height * (1.0 - 0.2 * bool(self.horizon)))
 
     def draw(self, canvas) -> None:
         w, h, t, u = self.width, self.height, self.t, self.unit
         canvas.image(self.gradient, 0, 0, w, h)
-        drift = -t * 2.6 * u
+        moving = 0.0 if self.gentle else 1.0     # gentle: the sky holds still
+        drift = -t * 2.6 * u * moving
         glow = float(self.setting("nebula_intensity", 1.0))
         if glow > 0:
             level = int(min(255, 150 * glow))
-            canvas.tiled(self.milkyway, drift, -h * 0.08, w, h * 0.9, color=(level,) * 3,
+            mw_w, mw_h = (self.milkyway.width, self.milkyway.height) if self.software \
+                else (w, h * 0.9)
+            canvas.tiled(self.milkyway, drift, -h * 0.08, mw_w, mw_h, color=(level,) * 3,
                          area=(0, 0, w, h))
         _, count = density_count(self.STARS, self.ctx.quality, float(self.setting("star_density", 1.0)))
         sky_h = h
@@ -115,12 +133,15 @@ class NightSkyScene(Scene):
                                  alpha=min(1.0, 0.8 * glow))
         self.bright.draw(canvas, self.spike_tex, t, w, sky_h, offset_x=drift, wrap=True,
                          alpha=0.85)
-        self.meteors.draw(canvas, self.streak_tex, self.glow_tex, u)
+        if self.meteors is not None:
+            self.meteors.draw(canvas, self.streak_tex, self.glow_tex, u)
         if self.cloud is not None:
-            ch = h * 0.34
-            canvas.tiled(self.cloud, -t * 9.0 * u, h * 0.44, w * 1.2, ch, area=(0, h * 0.44, w, ch))
-            canvas.tiled(self.cloud, -t * 14.0 * u + w * 0.37, h * 0.58, w * 1.5, ch * 1.1,
-                         alpha=200, area=(0, h * 0.58, w, ch * 1.1))
+            far, near = self.cloud, self.cloud_near
+            fw, fh = (far.width, far.height) if self.software else (w * 1.2, h * 0.34)
+            nw, nh = (near.width, near.height) if self.software else (w * 1.5, h * 0.374)
+            canvas.tiled(far, -t * 9.0 * u * moving, h * 0.44, fw, fh, area=(0, h * 0.44, w, fh))
+            canvas.tiled(near, -t * 14.0 * u * moving + w * 0.37, h * 0.58, nw, nh, alpha=200,
+                         area=(0, h * 0.58, w, nh))
         if self.horizon is not None:
             canvas.image(self.horizon, 0, h * 0.76, w, h * 0.24)
         self.grain.draw(canvas)

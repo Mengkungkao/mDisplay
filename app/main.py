@@ -59,6 +59,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--video-driver", default=os.environ.get("MDISPLAY_VIDEO_DRIVER", ""),
                         help="SDL video driver, bypassing session discovery (tests: dummy; "
                              "also MDISPLAY_VIDEO_DRIVER)")
+    parser.add_argument("--output", choices=("auto", "desktop", "hdmi"),
+                        default=os.environ.get("MDISPLAY_OUTPUT", "auto"),
+                        help="auto: the desktop session, else straight to HDMI when there is no "
+                             "desktop; desktop; hdmi (DRM/KMS, no desktop needed)")
     parser.add_argument("--duration", type=float, default=0.0,
                         help="close after this many seconds (testing)")
     parser.add_argument("--screenshot", default="",
@@ -91,7 +95,7 @@ def main(argv=None) -> int:
                       renderer=args.renderer, session=args.session, duration=args.duration,
                       show_info=args.show_info, seed=args.seed, standalone=args.standalone,
                       lcd=args.lcd, screenshot=args.screenshot, stats=args.stats,
-                      video_driver=args.video_driver)
+                      video_driver=args.video_driver, output=args.output)
     return Application(options).run()
 
 

@@ -37,11 +37,13 @@ class EngineTests(unittest.TestCase):
         self.off.frame(self.engine)
         self.assertEqual(self.engine.showing_id, scene_id)
 
-    def test_registry_lists_eight_unique_scenes(self):
-        self.assertEqual(len(catalog.SCENE_IDS), 8)
-        self.assertEqual(len(set(catalog.SCENE_IDS)), 8)
-        self.assertEqual(set(catalog.SCENE_IDS), {"galaxy", "nightsky", "nebula", "aurora", "solar",
-                                                 "meteors", "projector", "minimal"})
+    def test_registry_lists_seven_unique_scenes(self):
+        self.assertEqual(len(catalog.SCENE_IDS), 7)
+        self.assertEqual(len(set(catalog.SCENE_IDS)), 7)
+        self.assertEqual(set(catalog.SCENE_IDS), {"galaxy", "nightsky", "nebula", "aurora",
+                                                 "starlight", "projector", "minimal"})
+        self.assertFalse(set(catalog.RETIRED) & set(catalog.SCENE_IDS))
+        self.assertTrue(set(catalog.RETIRED.values()) <= set(catalog.SCENE_IDS))
         for info in catalog.SCENES:
             cls = catalog.load(info.id)
             self.assertTrue(issubclass(cls, Scene))
@@ -182,7 +184,7 @@ class EngineTests(unittest.TestCase):
         self.assertIn("nebula", self.engine.failed)
 
     def test_close_releases_every_texture(self):
-        for scene_id in ("galaxy", "solar"):
+        for scene_id in ("galaxy", "starlight"):
             self.engine.request(scene_id)
             self.off.frame(self.engine)
             self.clock.advance(10)

@@ -1,8 +1,8 @@
 {
   "id": "mdisplay",
   "name": "mDisplay",
-  "version": "0.1.1",
-  "description": "Galaxies, night skies, nebulae and auroras on an HDMI screen",
+  "version": "0.2.0",
+  "description": "Galaxies, night skies, nebulae, auroras and starlight on an HDMI screen",
   "entrypoint": "run.sh",
   "icon": "assets/icon.png",
   "min_os_version": "1.4.0",

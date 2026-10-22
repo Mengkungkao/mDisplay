@@ -96,7 +96,7 @@ class SceneRenderingTests(unittest.TestCase):
 
     def test_motion_does_not_depend_on_frame_rate(self):
         # Scenes without random events must look the same after 10 s at 24 or 60 fps.
-        for scene_id in ("galaxy", "nebula", "aurora", "solar", "projector"):
+        for scene_id in ("galaxy", "nebula", "aurora", "projector", "starlight"):
             with self.subTest(scene=scene_id):
                 slow, _ = run(self.off, scene_id, seconds=10.0, step=1 / 24)
                 ps = self.off.frame(slow).astype(np.float32)
@@ -105,32 +105,6 @@ class SceneRenderingTests(unittest.TestCase):
                 pf = self.off.frame(fast).astype(np.float32)
                 fast.close()
                 self.assertLess(np.abs(ps - pf).mean(), 0.6)
-
-    def test_the_sun_stays_round_at_every_aspect_ratio(self):
-        settings = Settings()
-        settings.set("orbits", False)
-        for w, h in ((480, 270), (400, 300), (270, 480)):
-            with self.subTest(size=(w, h)):
-                self.off.resize(w, h)
-                engine, _ = run(self.off, "solar", seconds=0.5, settings=settings)
-                pixels = self.off.frame(engine)[..., :3].astype(np.int16)
-                engine.close()
-                hot = (pixels[..., 0] >= 250) & (pixels[..., 1] >= 225)
-                cy, cx = int(h * 0.52), w // 2
-                self.assertTrue(hot[cy, cx], "the Sun is not at the centre")
-
-                def run_length(line, centre):
-                    left = right = centre
-                    while left > 0 and line[left - 1]:
-                        left -= 1
-                    while right < len(line) - 1 and line[right + 1]:
-                        right += 1
-                    return right - left + 1
-                # The contiguous hot run through the centre, across and down
-                # (a white star nearby must not count).
-                width, height = run_length(hot[cy, :], cx), run_length(hot[:, cx], cy)
-                self.assertGreater(width, 4)
-                self.assertAlmostEqual(width / height, 1.0, delta=0.2)
 
     def test_density_and_glow_settings_change_the_picture(self):
         settings = Settings()

@@ -33,6 +33,10 @@ SAVE_DELAY = 1.5           # settings are written this long after the last chang
 CURSOR_HIDE_AFTER = 2.5    # seconds without mouse movement (windowed)
 INFO_INTERVAL = 0.5
 REDUCED_FPS = 20
+# Software renderer: one of these steady rates, the fastest the device keeps up with.
+STEADY_RATES = (30, 24, 20, 15, 12, 10, 8, 6)
+ADAPT_EVERY = 3.0
+HALF_SIZE_FROM = 1280       # straight to HDMI: modes this wide are drawn at half size
 EXIT_OK, EXIT_USAGE, EXIT_NO_DISPLAY, EXIT_DEPENDENCY, EXIT_FAILED = 0, 2, 3, 4, 1
 
 
@@ -53,6 +57,7 @@ class Options:
     screenshot: str = ""
     stats: str = ""
     video_driver: str = ""
+    output: str = "auto"          # auto | desktop | hdmi
     synchronous: bool = False
     env: dict = field(default_factory=lambda: dict(os.environ))
 
@@ -97,6 +102,8 @@ class Application:
         self.status = "starting"
         self.display_error = None
         self._depth = 0
+        self.steady_fps = None
+        self.adapt_at = 0.0
 
     # ------------------------------------------------------------ helpers
     def _override(self, key: str, value) -> None:
@@ -183,9 +190,14 @@ class Application:
         from .display import session as sessions
         self.status = "looking for the desktop"
         self._remote_update()
+        output = self.options.output
+        if output == "hdmi" and not self.options.video_driver:
+            return self._open_kms(None)
         if not self.options.video_driver:
             result = sessions.find_session(self.env, self.options.session)
             if result.chosen is None:
+                if output == "auto" and not self.options.session:
+                    return self._open_kms(result)      # no desktop: draw on HDMI directly
                 self._display_failed(result.problem, result.remedy,
                                      [f"{c.candidate.describe()}: {c.message}" for c in result.checks])
                 return False
@@ -212,6 +224,67 @@ class Application:
             self._display_failed(exc.problem, exc.remedy, [f"{n}: {e}" for n, e in display.attempts],
                                  code=EXIT_DEPENDENCY if "SDL" in exc.problem else EXIT_NO_DISPLAY)
             return False
+        self.display = display
+        self.display_error = None
+        self._start_engine()
+        return True
+
+    def _open_kms(self, session_result) -> bool:
+        """No desktop session: drive the HDMI port directly (DRM/KMS), drawing in software."""
+        from .display import kms
+        details = [f"{c.candidate.describe()}: {c.message}" for c in session_result.checks] \
+            if session_result is not None else []
+        try:
+            import numpy  # noqa: F401
+        except ImportError:
+            self._display_failed("NumPy is not installed.", "Run install.sh again (it fetches "
+                                 "NumPy) or: sudo apt install python3-numpy", [], code=EXIT_DEPENDENCY)
+            return False
+        wanted = self.settings["display"]
+        if not any(wanted.startswith(name) for name in kms.CONNECTOR_TYPES.values()):
+            wanted = "auto"
+        out = kms.KmsOutput(wanted=wanted, prefer_small=True)
+        try:
+            out.open()
+        except kms.KmsError as exc:
+            out.close()
+            problem = exc.problem
+            if session_result is not None and not session_result.headless:
+                problem = f"{session_result.problem} {exc.problem}"
+            self._display_failed(problem, exc.remedy, details + [str(c) for c in kms.survey()])
+            return False
+        return self._use_kms(out, details)
+
+    def _use_kms(self, out, details: list) -> bool:
+        """Draw with SDL's software renderer in a hidden window (dummy video driver) and
+        hand each finished frame to ``out`` (an open kms.KmsOutput)."""
+        from .display.desktop import DesktopDisplay, DisplayInfo, DisplayUnavailable
+        os.environ["SDL_VIDEODRIVER"] = "dummy"
+        w, h = out.size
+        # Software drawing costs per pixel: wide modes are drawn at half size and scaled
+        # up once into the frame buffer (on an Orange Pi Zero 2W about 3x cheaper a frame).
+        draw = (w // 2, h // 2) if w >= HALF_SIZE_FROM else (w, h)
+        display = DesktopDisplay(fullscreen=False, window_size=draw, renderer="software",
+                                 hidden=True)
+        try:
+            display.open()
+        except DisplayUnavailable as exc:
+            out.close()
+            display.close()
+            self._display_failed(exc.problem, exc.remedy, details,
+                                 code=EXIT_DEPENDENCY if "SDL" in exc.problem else EXIT_NO_DISPLAY)
+            return False
+        display.kms = out
+        display.fullscreen = True
+        display.video_driver = "kms"
+        mode = out.mode
+        display.display = DisplayInfo(0, out.connector.name, 0, 0, w, h, mode.refresh,
+                                      out.connector.name)
+        display.displays_cache = [
+            DisplayInfo(i, c.name, 0, 0, c.modes[0].width if c.modes else 0,
+                        c.modes[0].height if c.modes else 0, 0, c.name)
+            for i, c in enumerate(x for x in out.connectors if x.connected and x.external)]
+        log.info("no desktop: drawing directly on %s (DRM/KMS, software renderer)", out.describe())
         self.display = display
         self.display_error = None
         self._start_engine()
@@ -286,7 +359,14 @@ class Application:
         w, h = self.display.size
         return SceneContext(w, h, self.quality, self.settings, seed=self.seed,
                             accelerated=self.display.accelerated,
-                            max_texture=self.display.canvas.max_texture)
+                            max_texture=self.display.canvas.max_texture,
+                            gentle=self.gentle)
+
+    @property
+    def gentle(self) -> bool:
+        from .scenes.base import resolve_motion
+        return resolve_motion(self.settings["motion"],
+                              bool(self.display and self.display.accelerated))
 
     # ----------------------------------------------------------------- loop
     def _loop(self) -> None:
@@ -314,6 +394,7 @@ class Application:
                     break
             if (self._needs_frames() and self.pacer.remaining() <= 0) or self.redraw:
                 self._frame()
+                self._adapt_rate()
 
     def _needs_frames(self) -> bool:
         if self.hidden:
@@ -353,7 +434,11 @@ class Application:
         self.overlay.draw(canvas, real if real > 0 else 1 / 60)
         if self.capture_next:
             self._capture(canvas)
-        canvas.present()
+        kms_out = getattr(self.display, "kms", None)
+        if kms_out is not None:
+            kms_out.show(self.display.scan_out)
+        else:
+            canvas.present()
         self.redraw = False
         work = time.perf_counter() - start
         if real > 0:
@@ -668,7 +753,7 @@ class Application:
             notice = self.display.move_to(self.settings["display"])
             if notice:
                 self._notice(notice, 6.0)
-        if "quality" in keys:
+        if keys & {"quality", "motion"}:
             self.quality = resolve_quality(self.settings["quality"], self.display.accelerated)
             if self.engine.scene_id:
                 self.engine._rebuild(self.engine.scene_id)
@@ -723,15 +808,53 @@ class Application:
                     cap = min(cap, slot.scene.max_fps)
         if self.standalone and not self.focused and self.settings["unfocused"] == "reduce":
             cap = min(cap, REDUCED_FPS)
+        self.rate_cap = cap
+        if self.steady_fps:
+            cap = min(cap, self.steady_fps)
         mode = self.settings["vsync"]
         vsync = mode == "on" or (mode == "auto" and refresh and refresh <= cap * 1.15)
         if bool(vsync) != self.display.vsync:
             self.display.set_vsync(bool(vsync))
         self.pacer.set_fps(cap)
 
+    def _adapt_rate(self) -> None:
+        """Software renderer: settle on a steady frame rate the device keeps up with.
+
+        Frames that come at an even rhythm look smoother than a faster but uneven
+        rate (measured on an Orange Pi Zero 2W, where scenes take 30-100 ms to draw).
+        Every few seconds the recent drawing time picks the fastest of STEADY_RATES
+        that leaves a margin; it only rises again with a clear margin, so it does
+        not hunt. Frames while a scene is being prepared are not counted."""
+        display = self.display
+        if display is None or display.accelerated or self.engine is None:
+            return
+        now = time.monotonic()
+        if now < self.adapt_at:
+            return
+        self.adapt_at = now + ADAPT_EVERY
+        if self.engine.busy or len(self.stats.work) < 15:
+            return
+        recent = sorted(list(self.stats.work)[-45:])
+        work = recent[int(len(recent) * 0.8)]
+        cap = getattr(self, "rate_cap", 30)
+        current = self.steady_fps or cap
+        choice = STEADY_RATES[-1]
+        for rate in STEADY_RATES:
+            if rate > cap:
+                continue
+            margin = 1.25 if rate > current else 1.1       # rising needs more room
+            if 1.0 / rate >= work * margin + 0.003:
+                choice = rate
+                break
+        if choice != self.steady_fps:
+            log.info("steady frame rate %d fps (drawing takes %.0f ms)", choice, work * 1000)
+            self.steady_fps = choice
+            self._apply_rate()
+
     # ---------------------------------------------------------------- panel
     def _menu(self) -> list:
         state = {"paused": self.paused, "quality": self.quality.name if self.quality else "",
+                 "gentle": self.gentle if self.display else None,
                  "sleep_remaining": self.engine.sleep_remaining() if self.engine else None,
                  "confirm_reset": time.monotonic() < self.confirm_reset_until}
         displays = self.display.displays_cache if self.display else []
@@ -847,6 +970,8 @@ class Application:
             "max_rss_mb": usage.ru_maxrss / 1024.0,
             "scene": self.engine.scene_id if self.engine else None,
             "quality": self.quality.name if self.quality else None,
+            "gentle": self.gentle if display else None,
+            "steady_fps": self.steady_fps,
             "renderer": display.driver if display else None,
             "accelerated": display.accelerated if display else None,
             "video_driver": display.video_driver if display else None,

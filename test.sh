@@ -12,5 +12,10 @@ VENV="${WHISPLAY_OS_APP_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/mdisplay}/ven
 if [ -x "$VENV/bin/python" ]; then
   PYTHON="$VENV/bin/python"
 fi
+# Libraries install.sh fetched into the data folder (no root): SDL2, NumPy, ...
+SYSROOT_ENV="$(dirname "$VENV")/sysroot/env.sh"
+if [ -f "$SYSROOT_ENV" ]; then
+  . "$SYSROOT_ENV"
+fi
 "$PYTHON" -m app.selftest
 echo "mdisplay: test passed"

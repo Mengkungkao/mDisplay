@@ -2,6 +2,32 @@
 
 Versions follow the manifest. Each section becomes the GitHub release notes.
 
+## [0.2.0] - 2026-10-23
+
+Runs on an mFruit OS device without a desktop, and smoothly on a small board.
+
+- **Direct HDMI**: with no desktop session, mDisplay drives the HDMI port itself
+  (Linux DRM/KMS) and gives it back to the console on exit; `--output
+  auto|desktop|hdmi`. Wide modes are drawn at half size and scaled up once.
+- **Missing packages fetched without root**: `install.sh` downloads SDL2,
+  NumPy or Pillow (and what they need) from the device's own apt sources into
+  the data folder when the system lacks them. This fixes the 0.1.1 install
+  failing with exit code 1 on a device without SDL2.
+- **New scene: Starlight** — a clear dark sky where stars slowly fade in and
+  out, then return elsewhere; nothing moves.
+- **Removed: Solar system and Meteor shower.** A saved scene naming one shows
+  Galaxy or Starlight instead; their settings (orbits, planet names) are dropped.
+- **Motion** setting (Auto, Full, Gentle; Auto is Gentle without a GPU): no
+  meteors, the night sky and Minimal hold still, slower turning and twinkling.
+- Smooth on the software renderer: a steady frame rate the board keeps up
+  with; textures pre-scaled to their drawn size; the galaxy composed at
+  whole-degree steps in the background and blended; soft edges drawn 1:1; a
+  late frame no longer delays the next one by a whole interval.
+- Measured on an Orange Pi Zero 2W (1 GB) on HDMI at 1280×720: Galaxy,
+  Starlight and Minimal at a steady 24 fps; Night sky, Nebula, Aurora and the
+  projector at a steady 15 fps (frame times within 1 ms of each other).
+  The picture on the monitor was not checked by eye.
+
 ## [0.1.1] - 2026-10-22
 
 First release with the mFruit OS package attached (`mdisplay-0.1.1.tar.gz`

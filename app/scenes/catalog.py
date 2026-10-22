@@ -24,10 +24,8 @@ SCENES = (
               "app.scenes.nightsky:NightSkyScene"),
     SceneInfo("nebula", "Nebula", "Drifting clouds of glowing gas", "app.scenes.nebula:NebulaScene"),
     SceneInfo("aurora", "Aurora", "Northern lights over mountains", "app.scenes.aurora:AuroraScene"),
-    SceneInfo("solar", "Solar system", "The Sun and planets, not to scale",
-              "app.scenes.solar:SolarSystemScene"),
-    SceneInfo("meteors", "Meteor shower", "Meteors from one radiant",
-              "app.scenes.meteors:MeteorShowerScene"),
+    SceneInfo("starlight", "Starlight", "Stars fading in and out on a clear sky",
+              "app.scenes.starlight:StarlightScene"),
     SceneInfo("projector", "Galaxy projector", "Turning nebula and laser stars",
               "app.scenes.projector:ProjectorScene"),
     SceneInfo("minimal", "Minimal", "Sparse dim stars for a dark room",
@@ -35,6 +33,8 @@ SCENES = (
 )
 
 SCENE_IDS = tuple(info.id for info in SCENES)
+# Scenes that were removed, and what a saved setting naming one shows instead.
+RETIRED = {"solar": "galaxy", "meteors": "starlight"}
 _BY_ID = {info.id: info for info in SCENES}
 
 

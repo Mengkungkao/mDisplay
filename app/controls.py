@@ -94,10 +94,10 @@ class Item:
 QUALITY_NAMES = {"eco": "Eco", "balanced": "Balanced", "high": "High", "ultra": "Ultra"}
 
 MENU_SETTINGS = ("scene", "auto_rotate", "rotate_minutes", "transition_seconds", "speed",
-                 "brightness", "edge_fade", "star_density", "nebula_intensity", "meteor_frequency",
+                 "motion", "brightness", "edge_fade", "star_density", "nebula_intensity", "meteor_frequency",
                  "projector_colors", "projector_lasers", "projector_rotation", "quality",
                  "fullscreen", "display", "sleep_minutes", "sleep_action", "show_scene_name",
-                 "orbits", "planet_labels", "clouds", "horizon", "mountains", "unfocused",
+                 "clouds", "horizon", "mountains", "unfocused",
                  "allow_screen_blanking")
 
 
@@ -142,6 +142,11 @@ def menu(settings: Settings, state: dict, standalone: bool = True, displays: lis
                 note = f"{int(remaining // 60) + 1} min left"
         elif key == "scene":
             note = catalog.info(settings["scene"]).description
+        elif key == "motion":
+            gentle = state.get("gentle")
+            if settings["motion"] == "auto" and gentle is not None:
+                value = "Auto (Gentle)" if gentle else "Auto (Full)"
+            note = "Gentle: slower movement and soft fades, for boards without a GPU"
         rows.append(Item(key, setting.label, value, enabled=enabled, note=note))
     rows.append(Item("reset", "Press again to reset" if state.get("confirm_reset")
                      else "Reset to defaults", kind="danger"))

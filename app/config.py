@@ -22,7 +22,7 @@ import tempfile
 import time
 from typing import Any, Callable, NamedTuple, Optional
 
-from .scenes.catalog import SCENE_IDS, name as scene_name
+from .scenes.catalog import RETIRED as RETIRED_SCENES, SCENE_IDS, name as scene_name
 
 log = logging.getLogger("mdisplay.config")
 
@@ -35,6 +35,7 @@ EDGE_FADES = ("off", "soft", "strong")
 PROJECTOR_COLORS = ("cosmic", "ocean", "aurora", "sunset", "rainbow")
 PROJECTOR_LASERS = ("green", "red", "both", "off")
 PROJECTOR_ROTATION = ("off", "slow", "medium", "fast")
+MOTION = ("auto", "full", "gentle")
 _DISPLAY_KEY = re.compile(r"^[A-Za-z0-9 _.:#()+-]{1,64}$")
 
 
@@ -133,6 +134,8 @@ SCHEMA = (
                             "exit": "Close mDisplay"}[v]),
     Setting("unfocused", "reduce", "choice", "In the background", UNFOCUSED,
             text=lambda v: {"keep": "Keep going", "reduce": "Slow down", "pause": "Pause"}[v]),
+    Setting("motion", "auto", "choice", "Motion", MOTION,
+            text=lambda v: {"auto": "Auto", "full": "Full", "gentle": "Gentle"}[v]),
     Setting("edge_fade", "soft", "choice", "Soft edges", EDGE_FADES,
             text=lambda v: v.capitalize()),
     Setting("projector_colors", "cosmic", "choice", "Projector colours", PROJECTOR_COLORS,
@@ -143,8 +146,6 @@ SCHEMA = (
     Setting("projector_rotation", "slow", "choice", "Projector turning", PROJECTOR_ROTATION,
             text=lambda v: v.capitalize()),
     Setting("show_scene_name", True, "flag", "Scene names", text=_on_off),
-    Setting("orbits", True, "flag", "Orbits", text=_on_off),
-    Setting("planet_labels", False, "flag", "Planet names", text=_on_off),
     Setting("clouds", True, "flag", "Clouds", text=_on_off),
     Setting("horizon", True, "flag", "Horizon", text=_on_off),
     Setting("mountains", True, "flag", "Mountains", text=_on_off),
@@ -154,6 +155,7 @@ SCHEMA = (
 )
 
 SETTINGS = {setting.key: setting for setting in SCHEMA}
+RETIRED_KEYS = {"orbits", "planet_labels"}     # settings of removed scenes: dropped on load
 DEFAULTS = {setting.key: setting.default for setting in SCHEMA}
 
 
@@ -243,8 +245,11 @@ def parse(data: dict) -> tuple:
             continue
         setting = SETTINGS.get(key)
         if setting is None:
-            extra[key] = value
+            if key not in RETIRED_KEYS:
+                extra[key] = value
             continue
+        if key == "scene" and value in RETIRED_SCENES:
+            value = RETIRED_SCENES[value]          # a removed scene: its replacement, quietly
         ok, checked = setting.validate(value)
         if not ok:
             if setting.kind == "number" and checked != setting.default:

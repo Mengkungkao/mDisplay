@@ -27,6 +27,24 @@ from .parts import Grain, StarField, common_sprites, density_count, sky_gradient
 INCLINATION = math.radians(63.0)     # 0 = face-on
 TILT = -21.0                         # degrees, on screen
 TURN_SECONDS = 1500.0                # one turn of the arm pattern at speed 1
+COMPOSE_STEP = 1.0                   # software renderer: degrees between cached composites
+GENTLE_TWINKLE = 0.35                # gentle motion: disk stars twinkle this much slower
+
+
+def _bilinear():
+    from PIL import Image
+    return getattr(Image, "Resampling", Image).BILINEAR
+
+
+def _add_centered(out: np.ndarray, layer: np.ndarray) -> None:
+    """Add ``layer`` (H, W, 3) into ``out`` with their centres together (clipped)."""
+    oh, ow = out.shape[:2]
+    lh, lw = layer.shape[:2]
+    x0, y0 = (ow - lw) // 2, (oh - lh) // 2
+    ox0, oy0 = max(0, x0), max(0, y0)
+    ox1, oy1 = min(ow, x0 + lw), min(oh, y0 + lh)
+    if ox1 > ox0 and oy1 > oy0:
+        out[oy0:oy1, ox0:ox1] += layer[oy0 - y0:oy1 - y0, ox0 - x0:ox1 - x0]
 
 
 def galaxy_disk(rng: np.random.Generator, size: int, detail: int) -> np.ndarray:
@@ -108,7 +126,8 @@ class GalaxyScene(Scene):
         self.disk_size = max(256, size)
         rng = ctx.rng("galaxy")
         self.disk_px = galaxy_disk(rng, self.disk_size, q.detail)
-        gw, gh = max(64, int(w * min(1.0, q.texture + 0.25))), max(64, int(h * min(1.0, q.texture + 0.25)))
+        sky = 1.0 if self.software else min(1.0, q.texture + 0.25)    # software: drawn 1:1
+        gw, gh = max(64, int(w * sky)), max(64, int(h * sky))
         self.back_px = sky_gradient(ctx.rng("space"), gw, gh,
                                     [(0.0, (3, 3, 10)), (0.5, (6, 5, 16)), (1.0, (3, 4, 11))],
                                     dither=1.0)
@@ -120,6 +139,8 @@ class GalaxyScene(Scene):
         capacity, _ = density_count(self.STARS, q, 2.0)
         self.stars = StarField(ctx.rng("stars"), capacity, size=(1.3, 5.5), twinkle=0.25,
                                twinkle_speed=(0.05, 0.6), saturation=0.5)
+        if self.gentle:
+            self.stars.calm()
         # Disk stars on circular orbits: flat rotation curve, so inner ones go round faster.
         drng = ctx.rng("disk-stars")
         n = int(self.DISK_STARS * max(0.5, q.stars))
@@ -131,12 +152,21 @@ class GalaxyScene(Scene):
         self.grain = Grain(ctx.rng("grain"), q.detail >= 1)
         self.sprites = common_sprites(q)
         self.sprites["core"] = sprites.glow(256, 2.6, core=1.0)
+        self.composite_px = {}
+        if self.software:
+            self._prepare_composing()
+            self.composite_px = {0: self.compose(0), 1: self.compose(1)}
 
     def setup(self, canvas) -> None:
+        self.composite_tex = {}                      # software: step -> texture
+        self.composing = {}                          # software: step -> Future
+        for step, pixels in self.composite_px.items():
+            self.composite_tex[step] = self.upload(canvas, pixels, ADD, f"composite{step}")
+        self.composite_px = {}
         self.disk = self.upload(canvas, self.disk_px, NONE, "disk")
         self.frame = canvas.target(self.disk_size, self.disk_size, "galaxy.frame", ADD)
         self.textures.append(self.frame)
-        self.back = self.upload(canvas, self.back_px, BLEND, "space")
+        self.back = self.upload(canvas, self.back_px, NONE, "space")
         self.tiny_tex = [self.upload(canvas, px, ADD, f"tiny{i}") for i, px in enumerate(self.tiny_px)]
         self.star_tex = self.upload(canvas, self.sprites["star"], name="star")
         self.core_tex = self.upload(canvas, self.sprites["core"], ADD, "core")
@@ -153,7 +183,7 @@ class GalaxyScene(Scene):
         for x, y, scale, angle, kind, a in self.tiny:
             size = scale * min(w, h) * 2.2
             canvas.centered(self.tiny_tex[kind], x * w + sway_x * 0.2, y * h + sway_y * 0.2, size,
-                            size, angle, alpha=int(255 * a))
+                            size, 0.0 if self.software else angle, alpha=int(255 * a))
         _, count = density_count(self.STARS, self.ctx.quality, float(self.setting("star_density", 1.0)))
         self.stars.draw(canvas, self.star_tex, t, w, h, count=count, offset_x=sway_x * 0.3,
                         offset_y=sway_y * 0.3, wrap=True, alpha=0.9)
@@ -166,22 +196,129 @@ class GalaxyScene(Scene):
         breathing = 0.93 + 0.07 * math.sin(t / 23.0) + 0.03 * math.sin(t / 7.3)
         tint = (255, int(244 + 8 * math.sin(t / 61.0)), 255)
         glow = float(self.setting("nebula_intensity", 1.0))
-        # Turn the disk in its own plane, then draw it foreshortened and tilted.
+        level = min(255, int(255 * (0.35 + 0.65 * glow) * breathing))
+        if self.ctx.accelerated:
+            # Turn the disk in its own plane, then draw it foreshortened and tilted.
+            self._turn_disk(canvas, angle)
+            canvas.centered(self.frame, cx, cy, diameter, diameter * squash, TILT,
+                            color=tint, alpha=level)
+            self._draw_glows(canvas, cx, cy, diameter, squash, breathing, glow)
+        else:
+            self._draw_composite(canvas, cx, cy, angle, tint, level)
+        self._draw_disk_stars(canvas, cx, cy, diameter, squash, angle)
+
+    def _turn_disk(self, canvas, angle: float) -> None:
         s = self.disk_size
         with canvas.into(self.frame):
             canvas.clear((0, 0, 0), alpha=0)
             canvas.image(self.disk, 0, 0, s, s, angle=angle)
-        level = min(255, int(255 * (0.35 + 0.65 * glow) * breathing))
-        canvas.centered(self.frame, cx, cy, diameter, diameter * squash, TILT,
-                        color=tint, alpha=level)
-        # Core glow, gently breathing.
+
+    def _draw_glows(self, canvas, cx, cy, diameter, squash, breathing, glow) -> None:
         core = diameter * 0.42
         canvas.centered(self.core_tex, cx, cy, core, core * (0.55 + 0.45 * squash), TILT,
                         color=(255, 222, 176), alpha=int(110 * breathing))
         canvas.centered(self.soft_tex, cx, cy, diameter * 0.95, diameter * 0.95 * squash, TILT,
                         color=(120, 130, 200), alpha=int(36 * (0.4 + 0.6 * glow)))
-        self._draw_disk_stars(canvas, cx, cy, diameter, squash, angle)
+
+    def resize(self, width: int, height: int) -> bool:
+        super().resize(width, height)
+        return self.software          # the composed images are made for one size
+
+    def close(self) -> None:
+        for future in getattr(self, "composing", {}).values():
+            future.cancel()
+        super().close()
+
+    def _draw_composite(self, canvas, cx, cy, angle, tint, level) -> None:
+        """Software renderer: turning and tilting big images costs tens of milliseconds a
+        frame, so the tilted galaxy comes from images composed at whole steps of
+        COMPOSE_STEP degrees, and each frame blends the two steps either side of the true
+        angle: it turns without visible steps. The next step is composed off the render
+        thread while the current two are shown."""
+        step = math.floor(angle / COMPOSE_STEP)
+        here = self._composite(canvas, step)
+        there = self._composite(canvas, step + 1)
+        for old in [k for k in self.composite_tex if k not in (step, step + 1)]:
+            texture = self.composite_tex.pop(old)
+            texture.destroy()
+            self.textures.remove(texture)
+        for old in [k for k in self.composing if k <= step]:
+            self.composing.pop(old).cancel()
+        if self.ctx.background is not None and step + 2 not in self.composing:
+            self.composing[step + 2] = self.ctx.background(self.compose, step + 2)
+        f = min(1.0, max(0.0, angle / COMPOSE_STEP - step))
+        scale = level / 255.0
+        for texture, weight in ((here, 1.0 - f), (there, f)):
+            if weight > 0.004:
+                canvas.centered(texture, cx, cy, texture.width, texture.height,
+                                color=tuple(int(c * scale * weight + 0.5) for c in tint))
         self.grain.draw(canvas)
+
+    def _composite(self, canvas, step: int):
+        texture = self.composite_tex.get(step)
+        if texture is not None:
+            return texture
+        future = self.composing.pop(step, None)
+        if future is not None and future.done() and not future.cancelled() \
+                and future.exception() is None:
+            pixels = future.result()
+        else:                       # not ready (the worker may be preparing a scene): now
+            if future is not None:
+                future.cancel()
+            pixels = self.compose(step)
+        texture = self.upload(canvas, pixels, ADD, f"composite{step}")
+        self.composite_tex[step] = texture
+        return texture
+
+    # -- the tilted galaxy composed on the CPU (software renderer) --------------
+    def geometry(self) -> tuple:
+        """(diameter, squash, (width, height) of the tilted galaxy's bounding box)."""
+        w, h = self.width, self.height
+        diameter = w * 1.15 if w < h else min(w, h) * self.diameter_factor
+        squash = math.cos(INCLINATION)
+        a, b = diameter / 2.0, diameter * squash / 2.0
+        t = math.radians(TILT)
+        half_w = math.sqrt((a * math.cos(t)) ** 2 + (b * math.sin(t)) ** 2) + 2
+        half_h = math.sqrt((a * math.sin(t)) ** 2 + (b * math.cos(t)) ** 2) + 2
+        return diameter, squash, (int(2 * half_w), int(2 * half_h))
+
+    def _prepare_composing(self) -> None:
+        """What compose() needs: the disk with its alpha multiplied in (an additive
+        layer) and the glows, which do not turn, added once into a base image."""
+        from PIL import Image
+        bilinear = _bilinear()
+        disk = self.disk_px.astype(np.float32)
+        premultiplied = disk[..., :3] * (disk[..., 3:4] / 255.0)
+        self.disk_premultiplied = Image.fromarray(
+            np.clip(premultiplied + 0.5, 0, 255).astype(np.uint8), "RGB")
+        diameter, squash, (cw, ch) = self.geometry()
+        base = np.zeros((ch, cw, 3), np.float32)
+        core = diameter * 0.42
+        for sprite, w, h, color, alpha in (
+                (self.sprites["core"], core, core * (0.55 + 0.45 * squash), (255, 222, 176), 110),
+                (self.sprites["soft"], diameter * 0.95, diameter * 0.95 * squash,
+                 (120, 130, 200), 36)):
+            shape = Image.fromarray(sprite[..., 3], "L").resize(
+                (max(1, round(w)), max(1, round(h))), bilinear).rotate(-TILT, bilinear, expand=True)
+            weight = np.asarray(shape, np.float32) * (alpha / (255.0 * 255.0))
+            _add_centered(base, weight[..., None] * np.asarray(color, np.float32))
+        self.composite_base = base
+
+    def compose(self, step: int) -> np.ndarray:
+        """The tilted galaxy at ``step`` x COMPOSE_STEP degrees as an opaque RGBA image to
+        draw additively: the picture the GPU path draws each frame (turned in its plane,
+        foreshortened, tilted, with the glows). Thread-safe: reads only prepared data."""
+        bilinear = _bilinear()
+        diameter, squash, _size = self.geometry()
+        disk = self.disk_premultiplied.rotate(-step * COMPOSE_STEP, bilinear)
+        disk = disk.resize((max(1, round(diameter)), max(1, round(diameter * squash))), bilinear)
+        disk = disk.rotate(-TILT, bilinear, expand=True)
+        out = self.composite_base.copy()
+        _add_centered(out, np.asarray(disk, np.float32))
+        image = np.empty(out.shape[:2] + (4,), np.uint8)
+        image[..., :3] = np.clip(out + 0.5, 0, 255).astype(np.uint8)
+        image[..., 3] = 255                  # opaque: drawn with ADD, black adds nothing
+        return image
 
     def _draw_disk_stars(self, canvas, cx, cy, diameter, squash, pattern_angle) -> None:
         t = self.t
@@ -194,7 +331,8 @@ class GalaxyScene(Scene):
         px = cx + x * math.cos(tilt) - y * math.sin(tilt)
         py = cy + x * math.sin(tilt) + y * math.cos(tilt)
         size = np.float32(self.unit) * (2.0 + 7.0 * self.orbit_b)
-        twinkle = 0.85 + 0.15 * np.sin(np.float32(t) * (0.6 + self.orbit_b) + self.orbit_a * 7.0)
+        rate = (0.6 + self.orbit_b) * (GENTLE_TWINKLE if self.gentle else 1.0)
+        twinkle = 0.85 + 0.15 * np.sin(np.float32(t) * rate + self.orbit_a * 7.0)
         alpha = 255.0 * self.orbit_b * twinkle * np.clip((self.orbit_r - 0.1) / 0.1, 0, 1)
         self.orbit_batch.sprites(px, py, size, size, self.orbit_c, alpha)
         self.orbit_batch.draw(canvas, self.star_tex, ADD, n)

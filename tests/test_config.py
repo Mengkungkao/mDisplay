@@ -84,6 +84,17 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(data["future_thing"], {"a": 1})
         self.assertEqual(data["scene"], "nebula")
 
+    def test_a_removed_scene_becomes_its_replacement_quietly(self):
+        for old, new in (("solar", "galaxy"), ("meteors", "starlight")):
+            with self.subTest(scene=old):
+                self.write(json.dumps({"scene": old, "orbits": False, "planet_labels": True}))
+                settings, problems = self.store.load()
+                self.assertEqual(problems, [])
+                self.assertEqual(settings["scene"], new)
+                # The removed scenes' own settings are dropped, not kept as unknown keys.
+                self.assertNotIn("orbits", settings.as_dict())
+                self.assertNotIn("planet_labels", settings.as_dict())
+
     def test_missing_optional_keys_use_defaults(self):
         self.write(json.dumps({"scene": "minimal"}))
         settings, problems = self.store.load()
@@ -92,20 +103,20 @@ class SettingsTests(unittest.TestCase):
 
     def test_save_is_atomic_and_leaves_no_temporary_files(self):
         settings = Settings()
-        settings.set("scene", "solar")
+        settings.set("scene", "starlight")
         self.assertTrue(self.store.save(settings))
         self.assertEqual(os.listdir(self.tmp.path), ["settings.json"])
-        self.assertEqual(self.store.load()[0]["scene"], "solar")
+        self.assertEqual(self.store.load()[0]["scene"], "starlight")
 
     def test_a_failed_write_keeps_the_previous_file(self):
         settings = Settings()
-        settings.set("scene", "solar")
+        settings.set("scene", "starlight")
         self.store.save(settings)
         settings.set("scene", "aurora")
         with mock.patch("json.dump", side_effect=OSError(28, "No space left on device")):
             self.assertFalse(self.store.save(settings))
         self.assertIn("No space left", self.store.last_error)
-        self.assertEqual(self.store.load()[0]["scene"], "solar")
+        self.assertEqual(self.store.load()[0]["scene"], "starlight")
         self.assertEqual(os.listdir(self.tmp.path), ["settings.json"])
 
     @unittest.skipIf(os.geteuid() == 0, "root ignores permissions")

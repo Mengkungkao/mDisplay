@@ -187,8 +187,8 @@ class MfruitOsIntegrationTests(unittest.TestCase):
         self.taps(3)
         self.hold()
         self.wait(lambda: "scene aurora requested" in self.app_log(), "Aurora chosen on the device")
-        # 5 taps reach Settings, hold opens it; 5 taps reach Speed, hold changes it.
-        self.taps(5)
+        # 4 taps reach Settings, hold opens it; 5 taps reach Speed, hold changes it.
+        self.taps(4)
         self.hold()
         self.taps(5)
         self.hold()

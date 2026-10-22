@@ -10,7 +10,9 @@ laser stars are sharp points that shimmer as the dome turns.
 
 Options (settings): colour theme, laser colour (green, red, both, off) and
 turning speed. On SDL's software renderer turning large images is too slow,
-so there the clouds drift instead of turning; the lasers still turn.
+so there the clouds drift instead of turning (scaled once to the size they
+are drawn at); the lasers still turn. Gentle motion halves the turning and
+slows the shimmer.
 """
 
 from __future__ import annotations
@@ -37,6 +39,8 @@ LASERS = {"green": [(60, 255, 90)], "red": [(255, 45, 45)],
           "both": [(60, 255, 90), (255, 45, 45)], "off": []}
 TURN_DEGREES_PER_SECOND = {"off": 0.0, "slow": 0.75, "medium": 2.0, "fast": 4.8}
 COLOR_SECONDS = 240.0          # one trip round the theme at speed 1
+GENTLE_TURN = 0.5              # gentle motion: the dome turns at half the chosen speed
+GENTLE_SHIMMER = 0.3           # and the laser stars shimmer this much slower
 
 RIM = 0.12                     # each layer fades out over the outer 12% of its radius
 BREATHE = 0.03                 # and its size breathes by up to 3%
@@ -69,6 +73,10 @@ class ProjectorScene(Scene):
         rng = ctx.rng("projector")
         layers = 2 if q.detail == 0 else 3
         self.layer_px = [nebula_disc(rng, side, q.detail, cells) for cells in (3, 4, 5)[:layers]]
+        if self.software:          # drawn 1:1 at a fixed size (no breathing)
+            diagonal = math.hypot(self.width, self.height)
+            self.layer_px = [self.fit(px, diagonal * layer[2], diagonal * layer[2])
+                             for px, layer in zip(self.layer_px, LAYERS)]
         n = int(self.LASER_COUNT * max(0.5, q.stars))
         lrng = ctx.rng("lasers")
         # Uniform over a disc as wide as the diagonal: turning never leaves a gap.
@@ -93,7 +101,7 @@ class ProjectorScene(Scene):
     def turn(self) -> float:
         """The dome's angle in degrees."""
         speed = TURN_DEGREES_PER_SECOND.get(self.setting("projector_rotation", "slow"), 0.75)
-        return self.t * speed
+        return self.t * speed * (GENTLE_TURN if self.gentle else 1.0)
 
     def draw(self, canvas) -> None:
         w, h, t = self.width, self.height, self.t
@@ -109,14 +117,14 @@ class ProjectorScene(Scene):
             breathing = 1.0 + BREATHE * math.sin(t / 17.0 + phase * 9)
             level = strength * intensity * (0.88 + 0.12 * math.sin(t / 29.0 + phase * 5))
             tint = tuple(min(255, int(c * level)) for c in color)
-            d = diagonal * size * breathing
+            d = texture.width if self.software else diagonal * size * breathing
             if turns:
                 canvas.centered(texture, cx, cy, d, d, angle * rate + phase * 120, color=tint)
             else:
                 # Software renderer: drift slowly instead (rotating 2000-pixel images is too slow).
                 ox = math.sin(t / 90.0 + phase * 7) * dx * diagonal * 0.012
                 oy = math.cos(t / 110.0 + phase * 5) * dy * diagonal * 0.012
-                canvas.centered(texture, cx + ox, cy + oy, d, d, phase * 120, color=tint)
+                canvas.centered(texture, cx + ox, cy + oy, d, d, color=tint)
         self._draw_points(canvas, cx, cy, diagonal, angle)
 
     def _draw_points(self, canvas, cx, cy, diagonal, angle) -> None:
@@ -129,7 +137,8 @@ class ProjectorScene(Scene):
             a = self.laser_a + np.float32(theta)
             x = cx + np.cos(a) * self.laser_r * radius
             y = cy + np.sin(a) * self.laser_r * radius
-            shimmer = 0.62 + 0.38 * np.sin(self.laser_f * np.float32(t) + self.laser_p) ** 2
+            rate = np.float32(t * (GENTLE_SHIMMER if self.gentle else 1.0))
+            shimmer = 0.62 + 0.38 * np.sin(self.laser_f * rate + self.laser_p) ** 2
             alpha = 255.0 * self.laser_b * shimmer
             palette = np.array(colors, np.float32)
             rgb = palette[np.minimum((self.laser_pick * len(colors)).astype(int), len(colors) - 1)]

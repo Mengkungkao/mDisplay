@@ -72,9 +72,19 @@ class PacerTests(unittest.TestCase):
         pacer = FramePacer(60, clock)
         clock.advance(2.0)                 # a long stall
         pacer.frame_done()
-        self.assertAlmostEqual(pacer.remaining(), 1 / 60)
+        self.assertEqual(pacer.remaining(), 0.0)        # the next frame at once...
         pacer.frame_done()
-        self.assertGreater(pacer.remaining(), 1 / 60)
+        self.assertAlmostEqual(pacer.remaining(), 1 / 60)   # ...then the normal rate, no burst
+
+    def test_a_slow_frame_does_not_add_a_wait(self):
+        # Regression (Orange Pi, software): frames taking 70 ms at a 30 fps cap took
+        # 104 ms because the pacer then waited a further full interval.
+        clock = helpers.FakeClock()
+        pacer = FramePacer(30, clock)
+        for _ in range(5):
+            clock.advance(0.070)           # drawing takes longer than the interval
+            pacer.frame_done()
+            self.assertEqual(pacer.remaining(), 0.0)
 
     def test_rate_changes(self):
         pacer = FramePacer(60, helpers.FakeClock())
