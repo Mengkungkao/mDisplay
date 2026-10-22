@@ -51,9 +51,12 @@ App id `mdisplay`, name "mDisplay" (the owner named the project; the brief's
    for full screen; `→`/`←` scenes, `B` settings, `F11`, `Esc`: this is also the
    keyboard check I could not do (live checklist in docs/TESTING.md).
 2. Decide: keep the name/id `mdisplay` (permanent after the first release).
-3. Commit and push to `github.com/Mengkungkao/mDisplay` (created by the owner,
-   README committed); pushing `manifest.json` lets the release workflow publish
-   v0.1.0 (docs/RELEASING.md). Optionally the Fruit Store entry.
+3. Release and Fruit Store: v0.1.0 on GitHub was created by hand without the
+   package (the workflow had stopped: the brief was pasted into
+   `tools/benchmark.py`). 0.1.1 is the same app with the file fixed; pushing it
+   lets the release workflow attach `mdisplay-0.1.1.tar.gz` + `SHA256SUMS`.
+   Then the Fruit Store entry goes into mFruit OS `config/catalog.json`
+   (docs/RELEASING.md); the hourly catalogue sync follows later releases.
 4. On a board with a desktop on HDMI: sideload and run the device checklist in
    docs/TESTING.md.
 

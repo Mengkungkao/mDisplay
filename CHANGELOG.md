@@ -2,9 +2,20 @@
 
 Versions follow the manifest. Each section becomes the GitHub release notes.
 
+## [0.1.1] - 2026-10-22
+
+First release with the mFruit OS package attached (`mdisplay-0.1.1.tar.gz`
+and `SHA256SUMS`); the app is the same as 0.1.0.
+
+- v0.1.0 was published by hand without the package: the release workflow
+  stopped at its checks, because text pasted into `tools/benchmark.py` was
+  not Python. The file is code again; `tools/` is not part of the package.
+- Not verified on a device (as 0.1.0): physical HDMI, a Whisplay board with
+  a desktop on HDMI, keys typed into the window, a live Wayland session.
+
 ## [0.1.0] - 2026-10-22
 
-First version (not yet released).
+First version (published on GitHub without its package; use 0.1.1).
 
 - Eight ambient scenes on an HDMI screen: Galaxy, Night sky, Nebula, Aurora,
   Solar system, Meteor shower, Galaxy projector, Minimal. Procedural, offline,
