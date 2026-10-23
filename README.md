@@ -7,12 +7,12 @@ graphics); no internet connection is needed.
 
 | Scene | What you see |
 |---|---|
-| Galaxy | A spiral galaxy at an angle, turning slowly; disk stars orbit faster near the centre; parallax against distant stars |
+| Galaxy | From inside the galaxy, like a dark-sky photograph: the Milky Way's band across the sky, warmer and denser towards the core, broken by dark dust lanes, drifting slowly; stars at three depths (parallax). *Galaxy view: Outside* shows the earlier spiral galaxy turning, seen at an angle |
 | Night sky | Twinkling stars (each at its own rate, stronger near the horizon), the Milky Way, drifting clouds, a tree line, meteors |
-| Nebula | Layers of glowing gas drifting at different depths, colours slowly cycling blue, cyan, violet, pink, red |
-| Aurora | Green and cyan curtains with drifting rays over dark mountains |
+| Nebula | Layers of glowing gas drifting at different depths, colours slowly cycling blue, cyan, violet, pink, red (half the 0.2 speed; slower again in Gentle motion) |
+| Aurora | Looking up into the aurora: curtains overhead, their rays converging on a corona near the top of the screen, stars between them, a thin horizon at the bottom |
 | Starlight | A clear dark sky where stars slowly fade in, shine and fade out, then return elsewhere; nothing moves |
-| Galaxy projector | Turning nebula clouds and laser stars, like a star projector on a ceiling |
+| Galaxy projector | Like a star projector on a ceiling: soft, uneven nebula clouds with fine wisps, tiny sharp laser stars that shimmer faintly, and a lens's fall-off and softness towards the edges |
 | Minimal | Sparse, dim stars on near black, for a dark room |
 
 Every scene fills the screen, and by default fades softly to black at the
@@ -116,15 +116,18 @@ validation: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 Scene · Change scenes (automatic rotation) and Change every · Transition ·
 Speed · Motion (Auto, Full, Gentle) · Brightness · Soft edges (Off, Soft,
-Strong) · Stars (density) · Nebula glow · Meteors · Projector colours (Cosmic,
+Strong) · Stars (density) · Nebula glow · Meteors · Galaxy view (Inside,
+Outside) · Projector colours (Cosmic,
 Ocean, Aurora, Sunset, Rainbow) · Projector lasers (Green, Red, Both, Off) ·
 Projector turning (Off, Slow, Medium, Fast) · Quality (Auto, Eco, Balanced,
 High, Ultra) · Full screen · Screen · Sleep timer and When it ends (Minimal
 scene, Pause, Close mDisplay) · Scene names · Clouds · Horizon · Mountains · In
 the background (desktop only: keep going, slow down, pause) · Screen blanking.
 
-**Quality** Auto is Balanced with a GPU and Eco with SDL's software renderer;
-Ultra is never chosen automatically.
+**Quality** Auto is Balanced, with a GPU or without one: picture quality comes
+before frame rate, and on a small board mDisplay settles on a lower but steady
+frame rate instead. Eco is there for a board that should work less; Ultra is
+never chosen automatically.
 
 **Sleep timer**: when it ends mDisplay switches to the Minimal scene, pauses,
 or closes (under mFruit OS: back to Home). While paused or after the timer,

@@ -58,10 +58,11 @@ Command-line choices (`--scene`, `--quality`, `--windowed`/`--fullscreen`,
 | `star_density` | number | `1.0` | 0.25–2 | multiplies star counts |
 | `nebula_intensity` | number | `1.0` | 0–1.5 | gas and glow layers: nebula, galaxy arms, Milky Way, projector clouds |
 | `meteor_frequency` | number | `1.0` | 0–3 | multiplies each scene's meteor rate; 0 = none |
+| `galaxy_view` | choice | `"inside"` | | Galaxy view: `inside` (the Milky Way across the sky, seen from within the disk), `outside` (a spiral galaxy turning, seen at an angle; the view before 0.3.0) |
 | `projector_colors` | choice | `"cosmic"` | | Galaxy projector colours: `cosmic`, `ocean`, `aurora`, `sunset`, `rainbow` |
 | `projector_lasers` | choice | `"green"` | | `green`, `red`, `both`, `off` |
 | `projector_rotation` | choice | `"slow"` | | `off`, `slow` (a turn in 8 min), `medium` (3 min), `fast` (75 s), at speed 1 |
-| `quality` | choice | `"auto"` | | `auto` (Balanced with a GPU, Eco without; never Ultra), `eco`, `balanced`, `high`, `ultra` |
+| `quality` | choice | `"auto"` | | `auto` (Balanced, with or without a GPU: quality before frame rate; never Ultra), `eco`, `balanced`, `high`, `ultra` |
 | `fullscreen` | flag | `true` | | desktop full screen on the chosen screen (no mode change) |
 | `display` | text | `"auto"` | 1–64 of `A-Za-z0-9 _.:#()+-` | `auto` = the first screen; else a screen's key from `--list-displays` (X11 output name such as `HDMI-1`, or `display-N`). A missing screen is never replaced silently: a notice says where the picture went |
 | `sleep_minutes` | choice | `0` | | 0 (off), 15, 30, 45, 60, 90, 120, 180, 240 |
@@ -70,7 +71,7 @@ Command-line choices (`--scene`, `--quality`, `--windowed`/`--fullscreen`,
 | `show_scene_name` | flag | `true` | | show a scene's name for a few seconds when it starts |
 | `clouds` | flag | `true` | | night sky clouds |
 | `horizon` | flag | `true` | | night sky tree line |
-| `mountains` | flag | `true` | | aurora mountains |
+| `mountains` | flag | `true` | | aurora: a thin horizon of hills and trees at the bottom edge |
 | `allow_screen_blanking` | flag | `false` | | let the desktop blank the screen while scenes run (it may always while paused) |
 | `vsync` | choice | `"auto"` | | `auto` (on when the screen's refresh rate matches the frame-rate cap), `on`, `off`; not in the menus |
 

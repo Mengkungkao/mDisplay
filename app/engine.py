@@ -72,6 +72,7 @@ class Engine:
         self.sleep_deadline: Optional[float] = None
         self.slept = False
         self.closed = False
+        self._wanted = None            # the newest preparation's token (see _context)
 
     # --------------------------------------------------------------- state
     @property
@@ -117,7 +118,7 @@ class Engine:
         if self.synchronous:
             future: Future = Future()
             try:
-                scene = cls(context)
+                scene = cls.create(context)
                 scene.prepare()
                 future.set_result(scene)
             except Exception as exc:     # reported like a worker failure
@@ -133,11 +134,15 @@ class Engine:
         context = self.make_context()
         if self.executor is not None:
             context.background = self.executor.submit
+        # A preparation stops when the engine closes or a newer choice replaces it.
+        token = object()
+        self._wanted = token
+        context.cancelled = lambda: self.closed or self._wanted is not token
         return context
 
     @staticmethod
     def _prepare(cls, context):
-        scene = cls(context)
+        scene = cls.create(context)
         scene.prepare()
         return scene
 

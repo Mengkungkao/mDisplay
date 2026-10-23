@@ -8,7 +8,7 @@ import numpy as np
 
 import helpers
 from app.config import Settings
-from app.scenes import catalog
+from app.scenes import catalog, projector
 
 SIZES = ((320, 180), (400, 300), (180, 320))
 
@@ -194,8 +194,10 @@ class ProjectorTests(unittest.TestCase):
                     totals.append(sum(c.mean() for c in corners) / 4)
                     centre = pixels[h // 2 - 20:h // 2 + 20, w // 2 - 20:w // 2 + 20].mean()
                 engine.close()
-                # Nebula is patchy, so compare averages over angles, not single patches.
-                self.assertGreater(np.mean(totals), 0.25 * centre)
+                # Nebula is patchy, so compare averages over angles, not single patches;
+                # the projector's lens dims the corners on purpose.
+                lens = 1.0 - projector.LENS_FALLOFF
+                self.assertGreater(np.mean(totals), 0.25 * lens * centre)
 
     def test_rotation_options(self):
         from app.scenes.projector import TURN_DEGREES_PER_SECOND

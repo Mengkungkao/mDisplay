@@ -74,6 +74,17 @@ The id is permanent once released: it is stored in users' settings.
   fail a scene whose average is too bright for an ambient screen.
 - **Release** everything: textures made with `self.upload` are destroyed by
   `close()`. Render targets made directly must be appended to `self.textures`.
+- **Long preparations** call `self.checkpoint()` between their expensive steps:
+  it stops the preparation (raises `Cancelled`) once the scene is no longer
+  wanted, for example when the app is closing, so a quit never waits for it.
+- **Variants**: a scene with views chosen by a setting overrides the class
+  method `create(ctx)` to return the view's class (see `galaxy.py`), and returns
+  True from `settings_changed` for that setting.
+- **The software renderer** (a board without a GPU) pays per pixel and per
+  triangle: draw textures 1:1 (`self.fit`), avoid turning big images, and keep
+  long thin triangles few. When per-frame geometry is too heavy, painting a
+  small image with NumPy and scaling it up can be cheaper (`aurora.py`).
+  Measure on the board (docs/TESTING.md).
 - **Edges**: fill the whole screen. If something turns, make it larger than
   the screen's diagonal (see `projector.py`), so no edge ever comes into view.
 

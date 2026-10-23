@@ -31,6 +31,34 @@ App id `mdisplay`, name "mDisplay" (the owner named the project; the brief's
   Not done, and needing the owner's decision: one mFruit OS Home entry per
   scene (one manifest is one app; it would mean eight packages).
 
+## Session 2026-10-23 (2): refinement plan, Phase 1 done (0.3.0)
+
+The owner's plan (pasted 2026-10-23) has three phases, one at a time, stopping
+after each for review: (1) refine Galaxy (inside view), Nebula (slower), Aurora
+(from below), Galaxy projector (realism); (2) propose, then build, a layer
+system for backgrounds and add-on effects; (3) meteors as an add-on, then other
+occasional objects (propose a list, wait for the owner's choice).
+
+Phase 1 is IMPLEMENTED and AUTOMATED (205 tests; `tests/test_scene_views.py`),
+measured on the board with a stand-in HDMI output because the monitor was
+disconnected (docs/records/2026-10-23-phase1-scenes.md). Notes:
+
+- Galaxy: `app/scenes/milkyway.py` (`InsideGalaxy`, default); the old view is
+  `OutsideGalaxy` in `galaxy.py`, chosen by the new `galaxy_view` setting
+  through `Scene.create(ctx)`.
+- Aurora: GPUs draw ray meshes; the software renderer paints the curtains
+  with NumPy (`SoftwareCurtains`), because SDL rasterises long diagonal
+  triangles slowly. A test checks the two paths give the same picture.
+- Concurrent edits appeared during this session (not made by this session):
+  `noise.upsample`, `_field(..., shrink=)` and a cancellation check
+  (`SceneContext.cancelled`, `Scene.checkpoint`, `Cancelled`, the engine's
+  token). They were kept, tested (`test_scene_views.py`) and documented.
+- Owner's standing priority (same day): **quality before speed**, motion smooth.
+  Applied: Quality Auto = Balanced on the software renderer too; textures made at
+  their drawn size; aurora painter at 0.5; tile-seam fix. Steady rates on the
+  board are now 12-24 fps (record above). Keep this priority in Phases 2 and 3.
+- Next: Phase 2 starts with a design proposal to the owner, no code first.
+
 ## Session 2026-10-22/23: device install, direct HDMI, smooth on the board (0.2.0)
 
 Owner's requests, in order: (1) the Store install failed with exit code 1 on

@@ -95,7 +95,7 @@ QUALITY_NAMES = {"eco": "Eco", "balanced": "Balanced", "high": "High", "ultra": 
 
 MENU_SETTINGS = ("scene", "auto_rotate", "rotate_minutes", "transition_seconds", "speed",
                  "motion", "brightness", "edge_fade", "star_density", "nebula_intensity", "meteor_frequency",
-                 "projector_colors", "projector_lasers", "projector_rotation", "quality",
+                 "galaxy_view", "projector_colors", "projector_lasers", "projector_rotation", "quality",
                  "fullscreen", "display", "sleep_minutes", "sleep_action", "show_scene_name",
                  "clouds", "horizon", "mountains", "unfocused",
                  "allow_screen_blanking")

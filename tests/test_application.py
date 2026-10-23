@@ -279,9 +279,10 @@ class BehaviourTests(AppTestCase):
 
     def test_quality_auto_never_picks_ultra(self):
         app = self.make()
-        self.assertEqual(app.quality.name, "eco")          # software renderer here
+        self.assertEqual(app.quality.name, "balanced")     # quality first, even in software
         from app.scenes.base import resolve_quality
         self.assertEqual(resolve_quality("auto", True).name, "balanced")
+        self.assertEqual(resolve_quality("auto", False).name, "balanced")
         self.assertEqual(resolve_quality("ultra", False).name, "ultra")
 
 

@@ -124,6 +124,26 @@ class Noise1D:
         return self.field.at(x, np.full_like(x, np.float32(t)))
 
 
+def upsample(field: np.ndarray, width: int, height: int) -> np.ndarray:
+    """A tileable (h, w) field resized to (height, width) by bilinear interpolation that
+    wraps at the edges, so it still tiles. Smooth fields are made small and scaled up:
+    the noise costs per pixel, the scaling very little."""
+    h, w = field.shape
+    if (h, w) == (height, width):
+        return field
+    xs = (np.arange(width, dtype=np.float32) + 0.5) * np.float32(w / width) - 0.5
+    ys = (np.arange(height, dtype=np.float32) + 0.5) * np.float32(h / height) - 0.5
+    x0, y0 = np.floor(xs), np.floor(ys)
+    fx = (xs - x0).astype(np.float32)
+    fy = (ys - y0).astype(np.float32)[:, None]
+    x0, y0 = x0.astype(np.int64) % w, y0.astype(np.int64) % h
+    x1, y1 = (x0 + 1) % w, (y0 + 1) % h
+    rows0, rows1 = field[y0], field[y1]
+    top = rows0[:, x0] * (1 - fx) + rows0[:, x1] * fx
+    bottom = rows1[:, x0] * (1 - fx) + rows1[:, x1] * fx
+    return top * (1 - fy) + bottom * fy
+
+
 def contrast(field: np.ndarray, low: float, high: float) -> np.ndarray:
     """Map [low, high] to [0, 1] with smooth ends."""
     t = np.clip((field - np.float32(low)) / np.float32(max(1e-6, high - low)), 0.0, 1.0)

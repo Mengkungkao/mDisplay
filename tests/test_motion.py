@@ -18,10 +18,12 @@ from app.scenes import starlight
 from app.scenes.parts import StarField
 
 
-def run(off, scene_id, gentle, seconds=1.0, step=0.1):
+def run(off, scene_id, gentle, seconds=1.0, step=0.1, **values):
     clock = helpers.FakeClock()
     settings = Settings()
     settings.set("transition_seconds", 0)
+    for key, value in values.items():
+        settings.set(key, value)
     engine = off.engine(settings, clock, gentle=gentle)
     engine.request(scene_id)
     off.frame(engine)
@@ -165,8 +167,9 @@ class StarlightTests(unittest.TestCase):
 
 
 class SoftwareGalaxyTests(unittest.TestCase):
-    """The software renderer shows the tilted galaxy from images composed at whole
-    steps (on the CPU, off the render thread) and blended, never turning it per frame."""
+    """Outside view: the software renderer shows the tilted galaxy from images composed
+    at whole steps (on the CPU, off the render thread) and blended, never turning it per
+    frame."""
 
     def setUp(self):
         self.off = helpers.Offscreen(320, 180)
@@ -175,10 +178,11 @@ class SoftwareGalaxyTests(unittest.TestCase):
         self.off.close()
 
     def test_composes_once_per_step_not_every_frame(self):
-        original = galaxy_scene.GalaxyScene.compose
-        with mock.patch.object(galaxy_scene.GalaxyScene, "compose", autospec=True,
+        original = galaxy_scene.OutsideGalaxy.compose
+        with mock.patch.object(galaxy_scene.OutsideGalaxy, "compose", autospec=True,
                                side_effect=original) as composed:
-            engine, clock = run(self.off, "galaxy", gentle=False, seconds=0.1)
+            engine, clock = run(self.off, "galaxy", gentle=False, seconds=0.1,
+                                galaxy_view="outside")
             scene = (engine.current or engine.incoming).scene
             steps = 3.5                                   # degrees the pattern turns
             seconds = galaxy_scene.TURN_SECONDS * steps / 360.0
@@ -193,7 +197,7 @@ class SoftwareGalaxyTests(unittest.TestCase):
         engine.close()
 
     def test_the_composed_galaxy_matches_what_the_renderer_draws(self):
-        engine, _ = run(self.off, "galaxy", gentle=False, seconds=0.1)
+        engine, _ = run(self.off, "galaxy", gentle=False, seconds=0.1, galaxy_view="outside")
         scene = (engine.current or engine.incoming).scene
         canvas = self.off.canvas
         diameter, squash, (w, h) = scene.geometry()
@@ -229,6 +233,7 @@ class SoftwareGalaxyTests(unittest.TestCase):
         clock = helpers.FakeClock()
         settings = Settings()
         settings.set("transition_seconds", 0)
+        settings.set("galaxy_view", "outside")
         engine = self.off.engine(settings, clock)
         make = engine.make_context
 
@@ -243,7 +248,7 @@ class SoftwareGalaxyTests(unittest.TestCase):
         engine.close()
 
     def test_blending_between_steps_has_no_jump(self):
-        engine, clock = run(self.off, "galaxy", gentle=False, seconds=0.1)
+        engine, clock = run(self.off, "galaxy", gentle=False, seconds=0.1, galaxy_view="outside")
         scene = (engine.current or engine.incoming).scene
         # Frames either side of a step boundary differ about as much as any two frames.
         boundary = galaxy_scene.TURN_SECONDS * galaxy_scene.COMPOSE_STEP / 360.0

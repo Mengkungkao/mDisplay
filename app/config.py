@@ -35,6 +35,7 @@ EDGE_FADES = ("off", "soft", "strong")
 PROJECTOR_COLORS = ("cosmic", "ocean", "aurora", "sunset", "rainbow")
 PROJECTOR_LASERS = ("green", "red", "both", "off")
 PROJECTOR_ROTATION = ("off", "slow", "medium", "fast")
+GALAXY_VIEWS = ("inside", "outside")
 MOTION = ("auto", "full", "gentle")
 _DISPLAY_KEY = re.compile(r"^[A-Za-z0-9 _.:#()+-]{1,64}$")
 
@@ -137,6 +138,8 @@ SCHEMA = (
     Setting("motion", "auto", "choice", "Motion", MOTION,
             text=lambda v: {"auto": "Auto", "full": "Full", "gentle": "Gentle"}[v]),
     Setting("edge_fade", "soft", "choice", "Soft edges", EDGE_FADES,
+            text=lambda v: v.capitalize()),
+    Setting("galaxy_view", "inside", "choice", "Galaxy view", GALAXY_VIEWS,
             text=lambda v: v.capitalize()),
     Setting("projector_colors", "cosmic", "choice", "Projector colours", PROJECTOR_COLORS,
             text=lambda v: v.capitalize()),

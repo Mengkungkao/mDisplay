@@ -12,6 +12,7 @@ renderer rounds to whole pixels.
 from __future__ import annotations
 
 import ctypes
+import math
 import logging
 from contextlib import contextmanager
 from typing import Optional
@@ -258,6 +259,12 @@ class Canvas:
         ax, ay, aw, ah = area or (0, 0, self.width, self.height)
         start_x = ax + ((offset_x % tile_w) - tile_w)
         start_y = ay + ((offset_y % tile_h) - tile_h)
+        if not self.accelerated:
+            # The software renderer truncates rectangles towards zero, so a tile left of
+            # the origin and one right of it would overlap by a pixel (a bright seam with
+            # ADD). Whole pixels everywhere keep the tiles edge to edge.
+            start_x, start_y = math.floor(start_x), math.floor(start_y)
+            tile_w, tile_h = round(tile_w), round(tile_h)
         y = start_y
         while y < ay + ah:
             x = start_x

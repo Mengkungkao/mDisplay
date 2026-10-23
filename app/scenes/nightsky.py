@@ -46,8 +46,10 @@ class NightSkyScene(Scene):
             self.horizon_h = hh
         # The Milky Way: a soft band of unresolved stars, star clouds stretched along
         # it and a broken dark rift, tileable across the width.
-        mw_w = max(128, int(w * 0.6 * tex))
-        mw_h = max(64, int(h * 0.6 * tex))
+        if self.software:                # drawn 1:1: made at the size it is drawn
+            mw_w, mw_h = max(128, int(w)), max(64, int(h * 0.9))
+        else:
+            mw_w, mw_h = max(128, int(w * 0.8 * tex)), max(64, int(h * 0.75 * tex))
         self.milkyway_px = milky_way(ctx.rng("milkyway"), mw_w, mw_h, q.detail)
         # Faint stars crowd into the band, as they do in the real Milky Way.
         brng = ctx.rng("band-stars")
@@ -62,7 +64,10 @@ class NightSkyScene(Scene):
         # (light from towns below the horizon), faded at its top and bottom.
         self.cloud_px = None
         if self.setting("clouds", True):
-            cw, ch = max(128, int(w * 0.7 * tex)), max(64, int(h * 0.3 * tex))
+            if self.software:            # the larger of the two drawn sizes; the other is fitted
+                cw, ch = max(128, int(w * 1.5)), max(64, int(h * 0.374))
+            else:
+                cw, ch = max(128, int(w * 0.9 * tex)), max(64, int(h * 0.34 * tex))
             self.cloud_px = clouds(ctx.rng("clouds"), cw, ch, q.detail)
             # Two layers at two scales; on the software renderer each is pre-scaled.
             self.cloud_far_px = self.fit(self.cloud_px, w * 1.2, h * 0.34)

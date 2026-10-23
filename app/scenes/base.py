@@ -2,6 +2,7 @@
 
 Lifecycle (driven by ``engine.Engine``):
 
+    create(ctx)      make the scene (a class method; may choose a variant)
     prepare()        CPU work only (NumPy, Pillow): runs on a worker thread
     setup(canvas)    upload textures (render thread)
     update(dt, t)    advance by dt scene-seconds (0 while paused)
@@ -52,10 +53,11 @@ def resolve_motion(setting: str, accelerated: bool) -> bool:
 
 
 def resolve_quality(setting: str, accelerated: bool) -> Quality:
-    """``auto`` is Balanced with a GPU and Eco with the software renderer; never Ultra."""
+    """``auto`` is Balanced, with or without a GPU (picture quality before frame rate:
+    the steady frame rate settles lower instead); never Ultra."""
     if setting in QUALITY:
         return QUALITY[setting]
-    return QUALITY["balanced" if accelerated else "eco"]
+    return QUALITY["balanced"]
 
 
 @dataclass
@@ -72,6 +74,9 @@ class SceneContext:
     # Runs CPU work off the render thread: background(fn, *args) -> Future. None (tests,
     # synchronous engines): do the work where it is needed.
     background: Optional[Callable] = None
+    # True once the scene is no longer wanted (the app is closing): long preparations
+    # stop at their next checkpoint instead of keeping the process alive.
+    cancelled: Callable[[], bool] = lambda: False
     extras: dict = field(default_factory=dict)
 
     @property
@@ -93,6 +98,10 @@ class SceneContext:
         return getter(key, default) if getter else default
 
 
+class Cancelled(Exception):
+    """A scene's preparation stopped because the scene is no longer wanted."""
+
+
 class Scene:
     """Base class; see the module docstring for the lifecycle."""
 
@@ -107,6 +116,11 @@ class Scene:
         self.t = 0.0
 
     # -- lifecycle -----------------------------------------------------
+    @classmethod
+    def create(cls, ctx: SceneContext) -> "Scene":
+        """The scene object for ``ctx``; a scene with variants picks one from its settings."""
+        return cls(ctx)
+
     def prepare(self) -> None:
         """CPU-only work (worker thread): build arrays, never call the canvas."""
 
@@ -140,6 +154,11 @@ class Scene:
 
     def setting(self, key: str, default=None):
         return self.ctx.setting(key, default)
+
+    def checkpoint(self) -> None:
+        """Call between expensive steps of ``prepare``: stops it when no longer wanted."""
+        if self.ctx.cancelled():
+            raise Cancelled(self.id)
 
     @property
     def unit(self) -> float:

@@ -19,21 +19,39 @@ from ..gfx.palette import NEBULA
 from .base import Scene
 from .parts import Grain, StarField, common_sprites, density_count
 
-CYCLE_SECONDS = 420.0      # one trip round the colour cycle at speed 1
+# Tuning: how fast the gas moves and changes colour, for Full and Gentle motion.
+# 0.2 drifted at 1.0 and went round the colours in 420 s; the owner asked for about
+# half that in Full and slower again in Gentle (2026-10-23).
+DRIFT = {"full": 0.5, "gentle": 0.3}                    # x the drift rates in LAYERS
+ASPECT = 0.62                  # a gas tile's height / width
+COLOR_CYCLE_SECONDS = {"full": 840.0, "gentle": 1400.0}  # one trip round the colours, speed 1
+
+
+def _reduced(width: int, height: int, factor: int) -> tuple:
+    return max(16, width // factor), max(16, height // factor)
 
 
 def gas_layer(rng, width: int, height: int, octaves: int, low: float, high: float,
               cells: int = 3, warp: float = 1.7) -> np.ndarray:
-    field = noise.warped_image(rng, width, height, cells_across=cells, octaves=octaves, warp=warp)
+    """A tileable gas layer at full size: its broad shape is made at a quarter of the
+    size and its filaments at half, then scaled up (seamless), so a layer as large as
+    the screen costs little to make and is sharp where it is drawn."""
+    qw, qh = _reduced(width, height, 4)
+    field = noise.upsample(noise.warped_image(rng, qw, qh, cells_across=cells, octaves=octaves,
+                                              warp=warp), width, height)
     density = noise.contrast(field, low, high)
-    filaments = noise.fbm_image(rng, width, height, cells_across=cells * 4, octaves=3, ridged=True)
+    hw, hh = _reduced(width, height, 2)
+    filaments = noise.upsample(noise.fbm_image(rng, hw, hh, cells_across=cells * 4, octaves=4,
+                                               ridged=True), width, height)
     alpha = density * (0.7 + 0.3 * filaments)
     return sprites.white(np.clip(alpha, 0, 1))
 
 
 def dust_layer(rng, width: int, height: int, octaves: int) -> np.ndarray:
     """Multiply layer: white leaves the colour, darker greys dim it."""
-    field = noise.warped_image(rng, width, height, cells_across=2, octaves=octaves, warp=1.2)
+    qw, qh = _reduced(width, height, 4)
+    field = noise.upsample(noise.warped_image(rng, qw, qh, cells_across=2, octaves=octaves,
+                                              warp=1.2), width, height)
     dust = noise.contrast(field, 0.52, 0.75)
     shade = 1.0 - 0.75 * dust
     image = np.empty((height, width, 4), np.uint8)
@@ -58,17 +76,22 @@ class NebulaScene(Scene):
         ctx, q = self.ctx, self.ctx.quality
         w, h = self.width, self.height
         layers = 2 + min(2, q.detail) if q.detail < 3 else 4
-        side = ctx.texture_size(900, minimum=192)
-        tw, th = side, max(96, int(side * 0.62))
         rng = ctx.rng("nebula")
-        self.layer_px = [gas_layer(rng, tw, th, 4 + q.detail, low, high, cells)
-                         for cells, low, high, *_ in self.LAYERS[:layers]]
-        self.dust_px = dust_layer(ctx.rng("dust"), tw, th, 4 + q.detail)
-        if self.software:       # drawn 1:1 at a fixed tile size (no slow size breathing)
+        if self.software:
+            # Drawn 1:1 at a fixed tile size (no slow size breathing): made at that size.
             span = self.span
-            self.layer_px = [self.fit(px, span * layer[3], span * layer[3] * th / tw)
-                             for px, layer in zip(self.layer_px, self.LAYERS)]
-            self.dust_px = self.fit(self.dust_px, span * 1.6, span * 1.6 * th / tw)
+            sizes = [(int(span * layer[3]), int(span * layer[3] * ASPECT))
+                     for layer in self.LAYERS[:layers]]
+            dust_size = (int(span * 1.6), int(span * 1.6 * ASPECT))
+        else:
+            side = ctx.texture_size(1600, minimum=256)
+            sizes = [(side, max(96, int(side * ASPECT)))] * layers
+            dust_size = sizes[0]
+        self.layer_px = []
+        for (tw, th), (cells, low, high, *_) in zip(sizes, self.LAYERS):
+            self.checkpoint()
+            self.layer_px.append(gas_layer(rng, tw, th, 4 + q.detail, low, high, cells))
+        self.dust_px = dust_layer(ctx.rng("dust"), *dust_size, 4 + q.detail)
         capacity, _ = density_count(self.STARS, q, 2.0)
         self.stars = StarField(ctx.rng("stars"), capacity, size=(1.3, 5.0), twinkle=0.2,
                                twinkle_speed=(0.05, 0.5), saturation=0.45)
@@ -93,8 +116,14 @@ class NebulaScene(Scene):
         self.grain.setup(self, canvas)
         self.layer_px = self.dust_px = self.sprites = None
 
+    @property
+    def motion(self) -> str:
+        return "gentle" if self.gentle else "full"
+
     def draw(self, canvas) -> None:
-        w, h, t, u = self.width, self.height, self.t, self.unit
+        w, h, u = self.width, self.height, self.unit
+        t = self.t * DRIFT[self.motion]               # drift time: every movement slows
+        cycle = self.t / COLOR_CYCLE_SECONDS[self.motion]
         canvas.clear((1, 1, 4))
         _, count = density_count(self.STARS, self.ctx.quality, float(self.setting("star_density", 1.0)))
         self.stars.draw(canvas, self.star_tex, t, w, h, count=count, offset_x=-t * 0.6 * u,
@@ -104,7 +133,7 @@ class NebulaScene(Scene):
         span = self.span
         for texture, (cells, _lo, _hi, size, dx, dy, phase, strength) in zip(self.layers,
                                                                              self.LAYERS):
-            color = NEBULA.at(t / CYCLE_SECONDS + phase)
+            color = NEBULA.at(cycle + phase)
             level = strength * intensity * breathing
             tint = tuple(min(255, int(c * level)) for c in color)
             if self.software:
@@ -119,7 +148,7 @@ class NebulaScene(Scene):
         for x, y, b, p in self.bright:
             px, py = x * w - t * 1.4 * u, y * h
             px %= w
-            color = NEBULA.at(t / CYCLE_SECONDS + p / 6.0)
+            color = NEBULA.at(cycle + p / 6.0)
             glow = 0.5 + 0.5 * b
             halo = (210 + 45 * b) * u
             canvas.centered(self.glow_tex, px, py, halo, halo,

@@ -1,6 +1,11 @@
-"""Scene A — Deep-space galaxy: a spiral galaxy turning slowly, seen at an angle.
+"""Scene A — Galaxy. Two views, chosen by the ``galaxy_view`` setting:
 
-The disk is generated face-on (logarithmic spiral arms, a warm bulge, dust
+- ``inside`` (the default): the Milky Way across the sky, seen from within
+  the disk (``milkyway.InsideGalaxy``);
+- ``outside``: a spiral galaxy turning slowly, seen at an angle
+  (``OutsideGalaxy``, below).
+
+Outside view: the disk is generated face-on (logarithmic spiral arms, a warm bulge, dust
 lanes on the inner edge of the arms, pink star-forming knots, sprinkled
 stars), turned in its own plane into a square render target, then drawn
 foreshortened and tilted, so it rotates like an inclined disk rather than a
@@ -113,6 +118,19 @@ def tiny_galaxy(rng: np.random.Generator, size: int = 64) -> np.ndarray:
 
 
 class GalaxyScene(Scene):
+    """The catalogue's Galaxy scene: ``create`` returns the view the settings ask for."""
+
+    id = "galaxy"
+
+    @classmethod
+    def create(cls, ctx):
+        if ctx.setting("galaxy_view", "inside") == "outside":
+            return OutsideGalaxy(ctx)
+        from .milkyway import InsideGalaxy
+        return InsideGalaxy(ctx)
+
+
+class OutsideGalaxy(Scene):
     id = "galaxy"
     STARS = 1100
     DISK_STARS = 260
@@ -122,6 +140,8 @@ class GalaxyScene(Scene):
         w, h = self.width, self.height
         self.diameter_factor = 1.5
         size = ctx.texture_size(1400, minimum=256)
+        if self.software:          # composed 1:1 on the CPU: as large as it is drawn
+            size = max(size, int(min(w, h) * self.diameter_factor))
         size = min(size, int(min(w, h) * self.diameter_factor * 1.15), ctx.max_texture)
         self.disk_size = max(256, size)
         rng = ctx.rng("galaxy")
@@ -223,6 +243,9 @@ class GalaxyScene(Scene):
     def resize(self, width: int, height: int) -> bool:
         super().resize(width, height)
         return self.software          # the composed images are made for one size
+
+    def settings_changed(self, keys: set) -> bool:
+        return "galaxy_view" in keys
 
     def close(self) -> None:
         for future in getattr(self, "composing", {}).values():

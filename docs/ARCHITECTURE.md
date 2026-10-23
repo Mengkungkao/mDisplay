@@ -132,6 +132,14 @@ is prepared, then they cross-fade. Text is drawn on the render thread only
   settles on a steady frame rate from `STEADY_RATES` that the device keeps up
   with, measured every 3 s, and **gentle motion** (the `motion` setting, Auto =
   gentle without a GPU) keeps anything from travelling across the sky.
+- Software-renderer specifics in 0.3.0: the inside galaxy's panorama is drawn as
+  two whole-pixel copies blended (a smooth sub-pixel drift); the aurora's
+  curtains are painted with NumPy into a small image each frame (polar
+  coordinates around the zenith) because SDL rasterises long diagonal
+  triangles slowly; the projector's lens fall-off is one 1:1 multiply layer.
+- Preparations can be cancelled: the engine gives each scene context a
+  `cancelled()` check (true once the engine closes or a newer scene is
+  chosen), and long preparations call `Scene.checkpoint()` between steps.
 
 ## Failure handling
 
@@ -139,7 +147,7 @@ is prepared, then they cross-fade. Text is drawn on the render thread only
 |---|---|
 | No desktop / not allowed to connect | direct HDMI; if that fails too (no screen connected, no access to `/dev/dri`, the screen in use): standalone message + exit code 3; under mFruit OS LCD *No HDMI desktop* with Retry / Details / Back (no retry loop) |
 | SDL2, NumPy or Pillow missing | `install.sh` fetches the Debian packages without root into the data folder; if that fails it refuses to install and names the apt command; at run time exit code 4 / LCD *Software missing* |
-| No GPU renderer | SDL's software renderer, Eco quality, noted in `--diagnose` |
+| No GPU renderer | SDL's software renderer (Balanced quality, half-size drawing on direct HDMI, a steady lower frame rate), noted in `--diagnose` |
 | A scene raises | it is closed and reported; Minimal takes over |
 | Saved screen not connected | shown on the first screen with a visible notice, never silently |
 | Screen connected again | the window moves back to the saved screen |

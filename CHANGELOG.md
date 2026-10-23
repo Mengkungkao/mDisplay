@@ -2,6 +2,43 @@
 
 Versions follow the manifest. Each section becomes the GitHub release notes.
 
+## [0.3.0] - 2026-10-23
+
+Phase 1 of the owner's refinement plan: the existing scenes, refined.
+
+- **Galaxy, seen from inside**: the Milky Way's band across the sky, as in a
+  dark-sky photograph: star clouds, a warmer and denser glow towards the core,
+  a broken dark rift and dust clouds, faint pink star-forming regions, stars at
+  three depths drifting at slightly different rates. The band drifts slowly
+  sideways (smoothly below a pixel a second on the software renderer). The
+  previous view stays as **Galaxy view: Outside** (new setting `galaxy_view`,
+  default Inside).
+- **Nebula**: half the 0.2 drift and colour-cycle speed in Full motion, slower
+  again in Gentle; the values are named constants (`DRIFT`,
+  `COLOR_CYCLE_SECONDS` in `app/scenes/nebula.py`).
+- **Aurora, seen from below**: curtains overhead whose rays converge on a
+  corona near the top of the screen, bunched into folds, stars visible between
+  them; the mountains became a thin horizon at the bottom edge.
+- **Galaxy projector**: softer, uneven clouds with empty patches, fine wisps at
+  their edges and some colour variation inside; tiny, sharp laser stars of
+  uneven brightness with a faint shimmer; a lens's fall-off and larger, softer
+  points towards the edges.
+- A scene's preparation now stops when the app closes or another scene is
+  chosen, so quitting never waits for a long preparation.
+- **Quality before frame rate** (the owner's priority): Quality *Auto* is now
+  Balanced without a GPU too (more stars, more layers), and on the software
+  renderer the nebula, Milky Way, clouds, projector clouds and outside galaxy
+  are made at the size they are drawn instead of being scaled up; the aurora is
+  painted at twice the area. The steady frame rate settles lower instead.
+- Fixed: on the software renderer a faint bright line could show where two
+  tiles of a drifting layer met (rectangles left of the screen were truncated
+  towards zero); tiles are now placed on whole pixels.
+- Measured on the Orange Pi Zero 2W with a stand-in HDMI output (the monitor
+  was disconnected), Balanced quality: Galaxy 24 fps (outside view 20), Night
+  sky 15, Nebula 15, Aurora 12, Starlight 24, projector 15, Minimal 24; every
+  scene's frame times within about 1 ms of each other. Preparing a scene takes
+  up to 6 s there (the projector; the galaxy 3.6 s).
+
 ## [0.2.0] - 2026-10-23
 
 Runs on an mFruit OS device without a desktop, and smoothly on a small board.
