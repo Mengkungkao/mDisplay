@@ -48,8 +48,8 @@ On Raspberry Pi OS Lite or a server image there is no desktop; installing one
 ## Slow, or "Only software rendering is available"
 
 SDL found no working OpenGL or OpenGL ES driver for this desktop. mDisplay
-then uses SDL's software renderer with the Eco preset: it works, at a lower
-frame rate, and the Galaxy projector's clouds drift instead of turning.
+then uses SDL's software renderer: it works, at a lower but steady frame rate
+(choose quality Eco for more frames).
 Check the GPU driver (`glxinfo -B` on X11), or try `--renderer opengles2`.
 `I` shows the frame rate and renderer on screen.
 

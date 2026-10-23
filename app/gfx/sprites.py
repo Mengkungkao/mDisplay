@@ -108,7 +108,7 @@ def screen_edges(width: int, height: int, mode: str, size: int = 384) -> np.ndar
 
     White (no change) in the middle, smoothly black at every edge and darker
     still in the corners, so in a dark room the picture seems to float with no
-    visible rectangle, like light from a projector. ``mode``: soft | strong.
+    visible rectangle, like projected light. ``mode``: soft | strong.
     Small (``size`` on the long side) and scaled up: it is smooth anyway.
     """
     band = EDGE_WIDTHS.get(mode, EDGE_WIDTHS["soft"])
@@ -128,7 +128,7 @@ def screen_edges(width: int, height: int, mode: str, size: int = 384) -> np.ndar
     fy = dy * dy * (3 - 2 * dy)
     value = fy[:, None] * fx[None, :]
     if mode == "strong":
-        # A gentle fall-off towards the edges as well, like a projector's light cone.
+        # A gentle fall-off towards the edges as well, like a lamp's light cone.
         cx = (x / width - 0.5)[None, :] * 2
         cy = (y / height - 0.5)[:, None] * 2
         value = value * (1.0 - 0.3 * np.clip(cx * cx + cy * cy, 0, 2) / 2)

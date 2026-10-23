@@ -187,8 +187,8 @@ class MfruitOsIntegrationTests(unittest.TestCase):
         self.taps(3)
         self.hold()
         self.wait(lambda: "scene aurora requested" in self.app_log(), "Aurora chosen on the device")
-        # 4 taps reach Settings, hold opens it; 5 taps reach Speed, hold changes it.
-        self.taps(4)
+        # 3 taps reach Settings, hold opens it; 5 taps reach Speed, hold changes it.
+        self.taps(3)
         self.hold()
         self.taps(5)
         self.hold()
@@ -215,10 +215,18 @@ class MfruitOsIntegrationTests(unittest.TestCase):
                                capture_output=True, text=True).stdout.strip()
         self.assertEqual(alive, "", "an mDisplay process outlived its session")
 
-        # Uninstall through mFruit OS (data is kept, as mFruit OS does).
+        # Uninstall through mFruit OS (data is kept, as mFruit OS does). mFruit OS refuses
+        # (on_error) while another install or update runs, e.g. its own update check.
+        self.wait(lambda: not self.rt.tasks.busy("jobs"), "mFruit OS's jobs to finish", 60)
         done = threading.Event()
-        self.rt.loop.post(self.rt.uninstall_app, "mdisplay", lambda kept: done.set())
+        refused = []
+
+        def failed(exc):
+            refused.append(exc)
+            done.set()
+        self.rt.loop.post(self.rt.uninstall_app, "mdisplay", lambda kept: done.set(), failed)
         self.wait(done.is_set, "the uninstall", 30)
+        self.assertEqual(refused, [], "mFruit OS refused the uninstall")
         self.assertFalse(os.path.exists(os.path.join(self.paths.home, "apps", "mdisplay", "current")))
 
     def test_force_stop_releases_the_lcd_and_ends_cleanly(self):

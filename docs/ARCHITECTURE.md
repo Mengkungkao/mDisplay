@@ -136,7 +136,11 @@ is prepared, then they cross-fade. Text is drawn on the render thread only
   two whole-pixel copies blended (a smooth sub-pixel drift); the aurora's
   curtains are painted with NumPy into a small image each frame (polar
   coordinates around the zenith) because SDL rasterises long diagonal
-  triangles slowly; the projector's lens fall-off is one 1:1 multiply layer.
+  triangles slowly.
+- 0.4.0: the aurora is a full-detail NumPy picture (emission added up, glow,
+  tone mapping, lake reflection) made on the worker a little ahead of time;
+  the render thread blends two consecutive pictures, so it is smooth on any
+  renderer, and it never runs ahead of the pictures made.
 - Preparations can be cancelled: the engine gives each scene context a
   `cancelled()` check (true once the engine closes or a newer scene is
   chosen), and long preparations call `Scene.checkpoint()` between steps.

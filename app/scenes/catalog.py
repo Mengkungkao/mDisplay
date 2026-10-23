@@ -26,15 +26,13 @@ SCENES = (
     SceneInfo("aurora", "Aurora", "Northern lights over mountains", "app.scenes.aurora:AuroraScene"),
     SceneInfo("starlight", "Starlight", "Stars fading in and out on a clear sky",
               "app.scenes.starlight:StarlightScene"),
-    SceneInfo("projector", "Galaxy projector", "Turning nebula and laser stars",
-              "app.scenes.projector:ProjectorScene"),
     SceneInfo("minimal", "Minimal", "Sparse dim stars for a dark room",
               "app.scenes.minimal:MinimalScene"),
 )
 
 SCENE_IDS = tuple(info.id for info in SCENES)
 # Scenes that were removed, and what a saved setting naming one shows instead.
-RETIRED = {"solar": "galaxy", "meteors": "starlight"}
+RETIRED = {"solar": "galaxy", "meteors": "starlight", "projector": "nebula"}
 _BY_ID = {info.id: info for info in SCENES}
 
 

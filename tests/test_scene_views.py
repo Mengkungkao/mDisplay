@@ -1,5 +1,5 @@
 """The refined scenes (0.3.0): the galaxy seen from inside, the slower nebula, the
-aurora from below and the projector's lens. Offscreen, software renderer."""
+realistic aurora over a lake (0.4.0). Offscreen, software renderer."""
 
 import math
 import unittest
@@ -8,7 +8,8 @@ import numpy as np
 
 import helpers
 from app.config import Settings
-from app.scenes import aurora, milkyway, nebula, projector
+from app.gfx.canvas import ADD
+from app.scenes import aurora, milkyway, nebula
 from app.scenes.base import QUALITY, Cancelled, SceneContext
 from app.scenes.galaxy import OutsideGalaxy
 
@@ -123,102 +124,98 @@ class NebulaSpeedTests(unittest.TestCase):
             off.close()
 
 
-class AuroraFromBelowTests(unittest.TestCase):
-    def setUp(self):
-        self.off = helpers.Offscreen(320, 180)
+class AuroraTests(unittest.TestCase):
+    """The aurora over a lake: colours by height, the shore, and pictures made in the
+    background and blended."""
 
-    def tearDown(self):
-        self.off.close()
+    @classmethod
+    def setUpClass(cls):
+        cls.sky = aurora.AuroraSky(np.random.default_rng(7), 320, 180, True, 1)
+        cls.image = cls.sky.render(20.0)[..., :3].astype(np.float32)
 
-    def test_rays_converge_on_the_zenith(self):
-        engine, _ = run(self.off, "aurora")
-        scene = showing(engine)
-        w, h = scene.width, scene.height
-        zx, zy = aurora.ZENITH[0] * w, aurora.ZENITH[1] * h
-        for curtain in scene.curtains:
-            curtain.update_mesh(10.0, w, h, 1.0)            # the GPU path's geometry
-            v = curtain.mesh.vertices.reshape(curtain.rays, curtain.rows + 1, 3)
-            bottom = np.stack([v["x"][:, 0].mean(axis=1), v["y"][:, 0].mean(axis=1)], axis=1)
-            top = np.stack([v["x"][:, -1].mean(axis=1), v["y"][:, -1].mean(axis=1)], axis=1)
-            to_zenith = np.array([zx, zy]) - bottom
-            along = top - bottom
-            cos = (along * to_zenith).sum(axis=1) / (
-                np.linalg.norm(along, axis=1) * np.linalg.norm(to_zenith, axis=1))
-            self.assertGreater(np.median(cos), 0.99)        # every ray points at the zenith
-            self.assertTrue((np.hypot(*(top - [zx, zy]).T) < np.hypot(*(bottom - [zx, zy]).T)).all())
-        engine.close()
+    def region(self, x0, x1, y0, y1):
+        h, w = self.image.shape[:2]
+        return self.image[int(y0 * h):int(y1 * h), int(x0 * w):int(x1 * w)].reshape(-1, 3).mean(axis=0)
 
-    def test_the_lower_border_is_on_screen_and_the_horizon_is_thin(self):
-        engine, _ = run(self.off, "aurora")
-        scene = showing(engine)
-        main = scene.curtains[0]
-        main.update_mesh(10.0, scene.width, scene.height, 1.0)
-        v = main.mesh.vertices.reshape(main.rays, main.rows + 1, 3)
-        bright_row = v["y"][:, 1].mean(axis=1)              # the bright lower edge
-        u = main.positions(10.0 * main.speed)
-        middle = np.abs(u - 0.5) < 0.2
-        self.assertTrue((bright_row[middle] < scene.height).all())
-        self.assertLessEqual(scene.horizon.height, 0.1 * scene.height + 1)
-        engine.close()
+    def test_green_low_pink_higher_teal_on_the_right_dark_top_left(self):
+        low = self.region(0.2, 0.5, 0.66, 0.78)          # above the shore, left of centre
+        high = self.region(0.25, 0.45, 0.3, 0.45)        # higher up on the left
+        right = self.region(0.8, 0.95, 0.35, 0.5)        # the right side, mid-height
+        corner = self.region(0.0, 0.12, 0.0, 0.2)        # top left: night sky
+        self.assertGreater(low[1], low[2])               # green dominates low down
+        self.assertGreater(high[0], high[1])             # pink (red over green) higher up
+        self.assertGreater(right[1] + right[2], 2 * right[0])   # teal on the right
+        self.assertLess(corner.mean(), 30)
+        self.assertGreater(self.image.max(), 200)        # bright where curtains overlap
 
-    def test_the_software_painter_draws_what_the_meshes_draw(self):
-        engine, _ = run(self.off, "aurora")
-        scene = showing(engine)
-        canvas = self.off.canvas
-        h, w = scene.painter.image.shape[:2]
-        black = np.zeros((h, w, 4), np.uint8)
-        painter = aurora.SoftwareCurtains(scene.curtains, black)
-        for t in (10.0, 75.0):
-            with self.subTest(t=t):
-                painted = painter.paint(t, 0.8)[..., :3].astype(np.float32)
-                target = canvas.target(w, h, "reference")
-                with canvas.into(target):
-                    canvas.clear((0, 0, 0), alpha=255)
-                    for curtain in scene.curtains:
-                        curtain.update_mesh(t, w, h, 0.8)
-                        curtain.mesh.draw(canvas, None, aurora.ADD)
-                    drawn = canvas.read_rgba()[..., :3].astype(np.float32)
-                target.destroy()
-                a, b = painted.mean(axis=2).ravel(), drawn.mean(axis=2).ravel()
-                self.assertGreater(np.corrcoef(a, b)[0, 1], 0.8)
-                self.assertLess(abs(a.mean() - b.mean()), 0.35 * b.mean())
-        engine.close()
+    def test_the_shore_is_dark_and_the_lake_reflects_the_sky(self):
+        sky = self.sky
+        y0 = sky.horizon
+        self.assertTrue(sky.trees.any())
+        trees = self.image[sky.trees]
+        self.assertLess(trees.max(), 20)
+        above = self.image[y0 - 12:y0 - 6].mean(axis=(0, 2))       # per column, above
+        below = self.image[y0 + 2:y0 + 8].mean(axis=(0, 2))        # and just below the shore
+        self.assertLess(below.mean(), above.mean())                 # dimmer: a reflection
+        self.assertGreater(np.corrcoef(above, below)[0, 1], 0.5)    # of the same light
 
-    def test_stars_show_between_the_rays(self):
-        engine, _ = run(self.off, "aurora", seconds=2.0)
-        pixels = self.off.frame(engine)[..., :3].astype(np.int16)
-        lit = pixels.max(axis=2)
-        dark = (lit < 25).mean()
-        self.assertGreater(dark, 0.15, "the curtains cover the whole sky")
-        engine.close()
+    def test_without_the_mountains_setting_it_is_all_sky(self):
+        sky = aurora.AuroraSky(np.random.default_rng(7), 160, 90, False, 0)
+        self.assertGreaterEqual(sky.horizon, sky.height)
+        self.assertIsNone(sky.trees)
 
+    def test_a_picture_depends_only_on_its_time(self):
+        a, b = self.sky.render(33.0), self.sky.render(33.0)
+        self.assertTrue((a == b).all())
+        self.assertFalse((a == self.sky.render(40.0)).all())
 
-class ProjectorLensTests(unittest.TestCase):
-    def test_the_lens_dims_the_corners_not_the_middle(self):
-        image = projector.lens(160, 90)[..., 0].astype(np.float32)
-        self.assertEqual(image[45, 80], 255)
-        self.assertAlmostEqual(image[0, 0] / 255.0, 1.0 - projector.LENS_FALLOFF, delta=0.05)
+    def test_blending_between_pictures_has_no_jump(self):
+        off = helpers.Offscreen(320, 180)
+        try:
+            engine, _ = run(off, "aurora", seconds=0.1)
+            scene = showing(engine)
+            boundary = scene.frames[1][0] / scene.rate          # real seconds to the 2nd picture
+            frames = []
+            for t in (boundary - 0.3, boundary - 0.15, boundary, boundary + 0.15):
+                engine.update(t - scene.t)
+                frames.append(off.frame(engine).astype(np.int16))
+            steps = [np.abs(b - a).mean() for a, b in zip(frames, frames[1:])]
+            self.assertLess(max(steps), 2.5 * min(steps) + 0.3)
+            engine.close()
+        finally:
+            off.close()
 
-    def test_points_soften_towards_the_edges(self):
-        r = np.array([0.0, 0.5, 1.0], np.float32)
-        defocus = projector.ProjectorScene.defocus(r)
-        self.assertAlmostEqual(float(defocus[0]), 1.0)
-        self.assertTrue((np.diff(defocus) > 0).all())
-        self.assertAlmostEqual(float(defocus[2]), 1.0 + projector.LENS_DEFOCUS, places=5)
+    def test_pictures_come_from_the_background_and_the_aurora_waits_for_them(self):
+        off = helpers.Offscreen(320, 180)
+        try:
+            from concurrent.futures import Future
+            submitted = []
 
-    def test_clouds_are_uneven_not_a_uniform_veil(self):
-        alpha = projector.nebula_disc(np.random.default_rng(2), 256, 0, 3)[..., 3] / 255.0
-        y, x = np.mgrid[0:256, 0:256]
-        inside = np.hypot(x - 127.5, y - 127.5) < 100
-        self.assertGreater((alpha[inside] < 0.05).mean(), 0.1)     # empty patches
-        self.assertGreater((alpha[inside] > 0.4).mean(), 0.05)     # and dense clouds
-        rgb = projector.nebula_disc(np.random.default_rng(2), 256, 0, 3)[..., :3]
-        self.assertGreater(rgb[..., 0][inside].std(), 5)          # colour varies inside
+            def background(fn, *args):
+                submitted.append(args)
+                return Future()                              # never finishes: a slow worker
+            settings = Settings()
+            settings.set("transition_seconds", 0)
+            engine = off.engine(settings, helpers.FakeClock())
+            make = engine.make_context
 
-    def test_laser_stars_are_tiny(self):
-        # The largest laser star at 1080p in the middle of the picture (before blur).
-        half = projector.LASER_SIZE * 0.75 * 1.0 * 1.25
-        self.assertLess(2 * half, 7.0)
+            def with_background():
+                context = make()
+                context.background = background
+                return context
+            engine.make_context = with_background
+            engine.request("aurora")
+            off.frame(engine)
+            scene = showing(engine)
+            self.assertEqual(len(submitted), 1)              # the next picture was asked for
+            for _ in range(50):
+                engine.update(0.5)
+                off.frame(engine)
+            self.assertEqual(len(submitted), 1)              # once, not again and again
+            self.assertLessEqual(scene.tau, scene.frames[-1][0])   # waited, did not run ahead
+            engine.close()
+        finally:
+            off.close()
 
 
 class TiledSeamTests(unittest.TestCase):
@@ -232,7 +229,7 @@ class TiledSeamTests(unittest.TestCase):
             flat = np.zeros((20, 50, 4), np.uint8)
             flat[..., :3] = 255
             flat[..., 3] = 60
-            texture = canvas.texture(flat, aurora.ADD, name="flat")
+            texture = canvas.texture(flat, ADD, name="flat")
             for offset in (-30.6, -12.25, 7.4, 33.9):
                 with self.subTest(offset=offset):
                     with canvas.into(off.target):

@@ -61,7 +61,7 @@ def check_lcd() -> int:
         lcd.home({"scene": "galaxy", "output": "HDMI-1 · 1920×1080", "rotation_remaining": 300.0},
                  status),
         lcd.home({"scene": "aurora", "paused": True}, status, armed=True, note="Paused"),
-        lcd.scenes("projector", 6, status),
+        lcd.scenes("nebula", 6, status),
         lcd.menu(items, 3, status),
         lcd.problem("No HDMI desktop", "Log in to the desktop on the HDMI screen.",
                     ["Retry", "Details", "Back"], 0, status),

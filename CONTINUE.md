@@ -31,6 +31,28 @@ App id `mdisplay`, name "mDisplay" (the owner named the project; the brief's
   Not done, and needing the owner's decision: one mFruit OS Home entry per
   scene (one manifest is one app; it would mean eight packages).
 
+## Session 2026-10-23 (3): realistic aurora, projector removed (0.4.0)
+
+The owner sent two photographs of a vivid aurora over a lake and asked for the
+aurora to be "ultimate realistic" and the Galaxy projector removed.
+
+- `app/scenes/aurora.py` rewritten: `AuroraSky.render(t)` is a full-detail
+  NumPy picture (curtains as emission in polar coordinates around a zenith
+  above the frame, colour by height up the rays, glow, tone mapping, treeline,
+  lake reflection), made on the worker a little ahead; the scene blends two
+  consecutive pictures and never runs ahead of them. 24 fps steady on the board
+  (stand-in HDMI; docs/records/2026-10-23-aurora-realistic.md).
+- Projector removed: `catalog.RETIRED["projector"] = "nebula"`; its three
+  settings are dropped on load. Six scenes now.
+- The mFruit OS integration test now waits for mFruit OS's jobs lane before
+  uninstalling and fails with the reason if refused (an update job from the
+  Store catalogue, which now lists mDisplay, made it time out).
+- MFruitOS `config/catalog.json` still describes mDisplay as "Galaxies, auroras
+  and a galaxy projector on HDMI; needs a desktop on the HDMI screen": both
+  parts are out of date (owner's repository; not changed here).
+- Phases 2 and 3 of the refinement plan are still to come (Phase 2 starts with
+  a design proposal).
+
 ## Session 2026-10-23 (2): refinement plan, Phase 1 done (0.3.0)
 
 The owner's plan (pasted 2026-10-23) has three phases, one at a time, stopping

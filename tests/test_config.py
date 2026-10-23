@@ -85,15 +85,18 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(data["scene"], "nebula")
 
     def test_a_removed_scene_becomes_its_replacement_quietly(self):
-        for old, new in (("solar", "galaxy"), ("meteors", "starlight")):
+        for old, new in (("solar", "galaxy"), ("meteors", "starlight"), ("projector", "nebula")):
             with self.subTest(scene=old):
-                self.write(json.dumps({"scene": old, "orbits": False, "planet_labels": True}))
+                self.write(json.dumps({"scene": old, "orbits": False, "planet_labels": True,
+                                       "projector_colors": "ocean", "projector_lasers": "red",
+                                       "projector_rotation": "fast"}))
                 settings, problems = self.store.load()
                 self.assertEqual(problems, [])
                 self.assertEqual(settings["scene"], new)
                 # The removed scenes' own settings are dropped, not kept as unknown keys.
-                self.assertNotIn("orbits", settings.as_dict())
-                self.assertNotIn("planet_labels", settings.as_dict())
+                for key in ("orbits", "planet_labels", "projector_colors", "projector_lasers",
+                            "projector_rotation"):
+                    self.assertNotIn(key, settings.as_dict())
 
     def test_missing_optional_keys_use_defaults(self):
         self.write(json.dumps({"scene": "minimal"}))

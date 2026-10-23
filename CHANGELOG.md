@@ -2,6 +2,22 @@
 
 Versions follow the manifest. Each section becomes the GitHub release notes.
 
+## [0.4.0] - 2026-10-23
+
+- **Aurora, made realistic** after the owner's reference photographs: a great
+  display over a lake. Curtains sweep across the sky with fine rays fanning
+  towards the zenith; bright yellow-green low down, pink and magenta higher,
+  lavender-white where they overlap, teal where a curtain is less red, thin
+  violet streaks high up; stars shine through; a dark treeline of islands and
+  a hill closes the horizon and the lake reflects the light (Mountains
+  setting; off shows the sky only). The light is added up as emission, given
+  a soft glow and tone-mapped like a photograph. Each picture is a
+  full-detail NumPy render made on the worker thread; the render thread
+  blends two consecutive pictures, so the motion stays smooth: 24 fps steady
+  on the Orange Pi Zero 2W (it was 12), 0.42 s per picture there.
+- **Removed: Galaxy projector.** A saved setting naming it shows the Nebula;
+  its settings (colours, lasers, turning) are dropped.
+
 ## [0.3.0] - 2026-10-23
 
 Phase 1 of the owner's refinement plan: the existing scenes, refined.

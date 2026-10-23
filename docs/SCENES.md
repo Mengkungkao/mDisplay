@@ -86,7 +86,10 @@ The id is permanent once released: it is stored in users' settings.
   small image with NumPy and scaling it up can be cheaper (`aurora.py`).
   Measure on the board (docs/TESTING.md).
 - **Edges**: fill the whole screen. If something turns, make it larger than
-  the screen's diagonal (see `projector.py`), so no edge ever comes into view.
+  the screen's diagonal, so no edge ever comes into view.
+- **Expensive pictures** that change slowly can be made on the worker
+  (`self.ctx.background`) a little ahead and blended on the render thread, as
+  the aurora does: full detail, smooth motion, nothing heavy in `draw`.
 
 ## 3. Check it
 

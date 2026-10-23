@@ -37,11 +37,11 @@ class EngineTests(unittest.TestCase):
         self.off.frame(self.engine)
         self.assertEqual(self.engine.showing_id, scene_id)
 
-    def test_registry_lists_seven_unique_scenes(self):
-        self.assertEqual(len(catalog.SCENE_IDS), 7)
-        self.assertEqual(len(set(catalog.SCENE_IDS)), 7)
+    def test_registry_lists_six_unique_scenes(self):
+        self.assertEqual(len(catalog.SCENE_IDS), 6)
+        self.assertEqual(len(set(catalog.SCENE_IDS)), 6)
         self.assertEqual(set(catalog.SCENE_IDS), {"galaxy", "nightsky", "nebula", "aurora",
-                                                 "starlight", "projector", "minimal"})
+                                                 "starlight", "minimal"})
         self.assertFalse(set(catalog.RETIRED) & set(catalog.SCENE_IDS))
         self.assertTrue(set(catalog.RETIRED.values()) <= set(catalog.SCENE_IDS))
         for info in catalog.SCENES:
@@ -228,7 +228,7 @@ class EdgeTests(unittest.TestCase):
         settings.set("edge_fade", mode)
         clock = helpers.FakeClock()
         engine = self.off.engine(settings, clock)
-        engine.request("projector")
+        engine.request("nebula")
         self.off.frame(engine)
         clock.advance(10)
         pixels = self.off.frame(engine)[..., :3].astype(float)

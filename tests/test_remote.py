@@ -289,7 +289,7 @@ class LcdRenderingTests(unittest.TestCase):
         items = controls.menu(Settings(), {"paused": False, "quality": "balanced",
                                            "sleep_remaining": 600}, standalone=False)
         for image in (lcd.home({"scene": "nebula", "output": "HDMI-1 · 1920×1080"}, status),
-                      lcd.scenes("projector", 6, status), lcd.scenes("galaxy", 9, status, armed=True),
+                      lcd.scenes("nebula", 6, status), lcd.scenes("galaxy", 9, status, armed=True),
                       lcd.home({"scene": "starlight", "loading": True}, status, armed=True),
                       lcd.menu(items, 0, status), lcd.menu(items, len(items), status),
                       lcd.problem("No desktop", "Log in on the HDMI screen.", ["Retry", "Details",

@@ -1,7 +1,7 @@
 # mDisplay
 
-Animated galaxies, night skies, nebulae, auroras, starlight and a galaxy
-projector on an HDMI screen: an ambient display for an **mFruit OS** device,
+Animated galaxies, night skies, nebulae, auroras and starlight on an HDMI
+screen: an ambient display for an **mFruit OS** device,
 or for any Linux desktop. Everything is generated on the device (procedural
 graphics); no internet connection is needed.
 
@@ -10,9 +10,8 @@ graphics); no internet connection is needed.
 | Galaxy | From inside the galaxy, like a dark-sky photograph: the Milky Way's band across the sky, warmer and denser towards the core, broken by dark dust lanes, drifting slowly; stars at three depths (parallax). *Galaxy view: Outside* shows the earlier spiral galaxy turning, seen at an angle |
 | Night sky | Twinkling stars (each at its own rate, stronger near the horizon), the Milky Way, drifting clouds, a tree line, meteors |
 | Nebula | Layers of glowing gas drifting at different depths, colours slowly cycling blue, cyan, violet, pink, red (half the 0.2 speed; slower again in Gentle motion) |
-| Aurora | Looking up into the aurora: curtains overhead, their rays converging on a corona near the top of the screen, stars between them, a thin horizon at the bottom |
+| Aurora | A great aurora over a lake, as in a long-exposure photograph: curtains sweeping across the sky with fine rays fanning towards the zenith, bright yellow-green low down, pink and magenta higher, lavender-white where they overlap, teal on the right, thin violet streaks high up; stars through it, a dark treeline of islands and the lake reflecting the light |
 | Starlight | A clear dark sky where stars slowly fade in, shine and fade out, then return elsewhere; nothing moves |
-| Galaxy projector | Like a star projector on a ceiling: soft, uneven nebula clouds with fine wisps, tiny sharp laser stars that shimmer faintly, and a lens's fall-off and softness towards the edges |
 | Minimal | Sparse, dim stars on near black, for a dark room |
 
 Every scene fills the screen, and by default fades softly to black at the
@@ -22,7 +21,7 @@ a visible rectangle, like projected light.
 **Motion** (Auto, Full, Gentle): on a board without a GPU, where only a few
 frames a second can be drawn, Auto chooses *Gentle*: nothing travels across
 the sky (no meteors; the night sky and Minimal hold still), stars twinkle more
-slowly, and what does move (galaxy, gas, curtains, the projector) moves more
+slowly, and what does move (galaxy, gas, curtains) moves more
 slowly. mDisplay also settles on a steady frame rate the board keeps up with,
 because an even rhythm looks smoother than a faster, uneven one.
 
@@ -85,7 +84,7 @@ fetched. mDisplay changes nothing outside its own folders.
 ./install.sh                 # checks SDL2, Pillow, NumPy; fetches what is missing, no root
 ./run.sh                     # full screen on the saved screen
 ./run.sh --windowed          # in a window
-./run.sh --scene projector   # start with a scene (not saved)
+./run.sh --scene aurora      # start with a scene (not saved)
 ./run.sh --output hdmi       # straight to the HDMI port (DRM/KMS), no desktop
 ./run.sh --diagnose          # what the desktop, HDMI and graphics offer, and what is missing
 ./run.sh --list-displays     # the screens, with the names the settings use (DP-0, HDMI-1, …)
@@ -117,12 +116,11 @@ validation: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 Scene · Change scenes (automatic rotation) and Change every · Transition ·
 Speed · Motion (Auto, Full, Gentle) · Brightness · Soft edges (Off, Soft,
 Strong) · Stars (density) · Nebula glow · Meteors · Galaxy view (Inside,
-Outside) · Projector colours (Cosmic,
-Ocean, Aurora, Sunset, Rainbow) · Projector lasers (Green, Red, Both, Off) ·
-Projector turning (Off, Slow, Medium, Fast) · Quality (Auto, Eco, Balanced,
-High, Ultra) · Full screen · Screen · Sleep timer and When it ends (Minimal
-scene, Pause, Close mDisplay) · Scene names · Clouds · Horizon · Mountains · In
-the background (desktop only: keep going, slow down, pause) · Screen blanking.
+Outside) · Quality (Auto, Eco, Balanced, High, Ultra) · Full screen · Screen ·
+Sleep timer and When it ends (Minimal scene, Pause, Close mDisplay) · Scene
+names · Clouds · Horizon (night sky) · Mountains (the aurora's lake and shore) ·
+In the background (desktop only: keep going, slow down, pause) · Screen
+blanking.
 
 **Quality** Auto is Balanced, with a GPU or without one: picture quality comes
 before frame rate, and on a small board mDisplay settles on a lower but steady

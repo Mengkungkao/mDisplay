@@ -32,9 +32,6 @@ QUALITIES = ("auto", "eco", "balanced", "high", "ultra")
 SLEEP_ACTIONS = ("minimal", "pause", "exit")
 UNFOCUSED = ("keep", "reduce", "pause")
 EDGE_FADES = ("off", "soft", "strong")
-PROJECTOR_COLORS = ("cosmic", "ocean", "aurora", "sunset", "rainbow")
-PROJECTOR_LASERS = ("green", "red", "both", "off")
-PROJECTOR_ROTATION = ("off", "slow", "medium", "fast")
 GALAXY_VIEWS = ("inside", "outside")
 MOTION = ("auto", "full", "gentle")
 _DISPLAY_KEY = re.compile(r"^[A-Za-z0-9 _.:#()+-]{1,64}$")
@@ -141,13 +138,6 @@ SCHEMA = (
             text=lambda v: v.capitalize()),
     Setting("galaxy_view", "inside", "choice", "Galaxy view", GALAXY_VIEWS,
             text=lambda v: v.capitalize()),
-    Setting("projector_colors", "cosmic", "choice", "Projector colours", PROJECTOR_COLORS,
-            text=lambda v: v.capitalize()),
-    Setting("projector_lasers", "green", "choice", "Projector lasers", PROJECTOR_LASERS,
-            text=lambda v: {"green": "Green", "red": "Red", "both": "Green and red",
-                            "off": "Off"}[v]),
-    Setting("projector_rotation", "slow", "choice", "Projector turning", PROJECTOR_ROTATION,
-            text=lambda v: v.capitalize()),
     Setting("show_scene_name", True, "flag", "Scene names", text=_on_off),
     Setting("clouds", True, "flag", "Clouds", text=_on_off),
     Setting("horizon", True, "flag", "Horizon", text=_on_off),
@@ -158,7 +148,9 @@ SCHEMA = (
 )
 
 SETTINGS = {setting.key: setting for setting in SCHEMA}
-RETIRED_KEYS = {"orbits", "planet_labels"}     # settings of removed scenes: dropped on load
+# Settings of removed scenes: dropped when a settings file is read.
+RETIRED_KEYS = {"orbits", "planet_labels", "projector_colors", "projector_lasers",
+                "projector_rotation"}
 DEFAULTS = {setting.key: setting.default for setting in SCHEMA}
 
 

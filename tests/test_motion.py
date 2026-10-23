@@ -12,7 +12,6 @@ import helpers
 from app.config import Settings
 from app.scenes import catalog
 from app.scenes import galaxy as galaxy_scene
-from app.scenes import projector as projector_scene
 from app.scenes.base import QUALITY, SceneContext, resolve_motion
 from app.scenes import starlight
 from app.scenes.parts import StarField
@@ -77,17 +76,6 @@ class GentleSceneTests(unittest.TestCase):
                 self.assertGreater(changed, 0.0002, "the scene did not move in 4 s")
                 engine.close()
                 self.assertEqual(self.off.canvas.live_textures, baseline)
-
-    def test_projector_turns_at_half_speed(self):
-        angles = {}
-        for gentle in (False, True):
-            engine, _ = run(self.off, "projector", gentle)
-            scene = (engine.current or engine.incoming).scene
-            scene.t = 100.0
-            angles[gentle] = scene.turn()
-            engine.close()
-        self.assertAlmostEqual(angles[True], angles[False] * projector_scene.GENTLE_TURN)
-        self.assertGreater(angles[False], 0)
 
 
 class StillSkyTests(unittest.TestCase):

@@ -8,7 +8,7 @@ import numpy as np
 
 import helpers
 from app.config import Settings
-from app.scenes import catalog, projector
+from app.scenes import catalog
 
 SIZES = ((320, 180), (400, 300), (180, 320))
 
@@ -96,7 +96,7 @@ class SceneRenderingTests(unittest.TestCase):
 
     def test_motion_does_not_depend_on_frame_rate(self):
         # Scenes without random events must look the same after 10 s at 24 or 60 fps.
-        for scene_id in ("galaxy", "nebula", "aurora", "projector", "starlight"):
+        for scene_id in ("galaxy", "nebula", "aurora", "starlight"):
             with self.subTest(scene=scene_id):
                 slow, _ = run(self.off, scene_id, seconds=10.0, step=1 / 24)
                 ps = self.off.frame(slow).astype(np.float32)
@@ -143,68 +143,3 @@ class SceneRenderingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class ProjectorTests(unittest.TestCase):
-    """The galaxy projector turns its whole sky; no layer edge ever reaches the screen."""
-
-    def setUp(self):
-        self.off = helpers.Offscreen(320, 180)
-
-    def tearDown(self):
-        self.off.close()
-
-    def test_options_change_the_picture(self):
-        base = Settings()
-        base.set("edge_fade", "off")
-        engine, _ = run(self.off, "projector", settings=base)
-        reference = self.off.frame(engine)[..., :3].astype(np.int16)
-        for key, value in (("projector_colors", "sunset"), ("projector_lasers", "off"),
-                           ("projector_lasers", "red")):
-            with self.subTest(option=(key, value)):
-                base.set(key, value)
-                changed = self.off.frame(engine)[..., :3].astype(np.int16)
-                self.assertGreater(np.abs(changed - reference).max(), 20)
-        engine.close()
-
-    def test_turning_never_uncovers_a_corner(self):
-        # Each layer is a disc drawn around the screen's centre; the screen's corners
-        # are half a diagonal away. The disc's fully lit part must reach past them
-        # at its smallest (breathing) size, whatever the angle and screen shape.
-        from app.scenes.projector import BREATHE, LAYERS, RIM
-        for _rate, _phase, size, _strength in LAYERS:
-            lit_radius = 0.5 * size * (1 - BREATHE) * (1 - RIM)     # in diagonals
-            self.assertGreater(lit_radius, 0.5)
-
-    def test_corners_are_lit_without_soft_edges(self):
-        settings = Settings()
-        settings.set("edge_fade", "off")
-        settings.set("projector_lasers", "off")
-        for w, h in ((320, 180), (180, 320)):
-            with self.subTest(size=(w, h)):
-                self.off.resize(w, h)
-                engine, clock = run(self.off, "projector", settings=settings, seconds=1)
-                totals = []
-                for _ in range(6):                       # at several angles of the dome
-                    for _ in range(50):
-                        clock.advance(0.5)
-                        engine.update(0.5 * 20)
-                    pixels = self.off.frame(engine)[..., :3].astype(float)
-                    corners = [pixels[:6, :6], pixels[:6, -6:], pixels[-6:, :6], pixels[-6:, -6:]]
-                    totals.append(sum(c.mean() for c in corners) / 4)
-                    centre = pixels[h // 2 - 20:h // 2 + 20, w // 2 - 20:w // 2 + 20].mean()
-                engine.close()
-                # Nebula is patchy, so compare averages over angles, not single patches;
-                # the projector's lens dims the corners on purpose.
-                lens = 1.0 - projector.LENS_FALLOFF
-                self.assertGreater(np.mean(totals), 0.25 * lens * centre)
-
-    def test_rotation_options(self):
-        from app.scenes.projector import TURN_DEGREES_PER_SECOND
-        settings = Settings()
-        engine, _ = run(self.off, "projector", settings=settings, seconds=10)
-        scene = (engine.current or engine.incoming).scene
-        self.assertAlmostEqual(scene.turn(), scene.t * TURN_DEGREES_PER_SECOND["slow"])
-        settings.set("projector_rotation", "off")
-        self.assertEqual(scene.turn(), 0.0)
-        engine.close()
