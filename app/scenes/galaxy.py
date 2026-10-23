@@ -27,7 +27,7 @@ from ..gfx.batch import QuadBatch
 from ..gfx.canvas import ADD, BLEND, NONE
 from ..gfx.palette import star_colors
 from .base import Scene
-from .parts import Grain, StarField, common_sprites, density_count, sky_gradient
+from .parts import FadingStars, Grain, common_sprites, density_count, sky_gradient
 
 INCLINATION = math.radians(63.0)     # 0 = face-on
 TILT = -21.0                         # degrees, on screen
@@ -157,8 +157,8 @@ class OutsideGalaxy(Scene):
                       trng.uniform(0, 360), int(trng.integers(3)), trng.uniform(0.35, 0.7))
                      for _ in range(9)]
         capacity, _ = density_count(self.STARS, q, 2.0)
-        self.stars = StarField(ctx.rng("stars"), capacity, size=(1.3, 5.5), twinkle=0.25,
-                               twinkle_speed=(0.05, 0.6), saturation=0.5)
+        # The distant stars never move: each fades in and out where it is.
+        self.stars = FadingStars(ctx.rng("stars"), capacity, size=(1.3, 5.5), saturation=0.5)
         if self.gentle:
             self.stars.calm()
         # Disk stars on circular orbits: flat rotation curve, so inner ones go round faster.
@@ -205,8 +205,7 @@ class OutsideGalaxy(Scene):
             canvas.centered(self.tiny_tex[kind], x * w + sway_x * 0.2, y * h + sway_y * 0.2, size,
                             size, 0.0 if self.software else angle, alpha=int(255 * a))
         _, count = density_count(self.STARS, self.ctx.quality, float(self.setting("star_density", 1.0)))
-        self.stars.draw(canvas, self.star_tex, t, w, h, count=count, offset_x=sway_x * 0.3,
-                        offset_y=sway_y * 0.3, wrap=True, alpha=0.9)
+        self.stars.draw(canvas, self.star_tex, t, w, h, count=count, alpha=0.9)
         cx, cy = w * 0.5 + sway_x, h * 0.5 + sway_y
         diameter = min(w, h) * self.diameter_factor
         if w < h:                                   # portrait: keep the long axis on screen

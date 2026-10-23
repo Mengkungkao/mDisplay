@@ -3,8 +3,9 @@
 Like a dark-sky photograph: a bright band of unresolved stars and star
 clouds crosses the sky, denser and warmer towards the galactic core; a broken
 dark rift runs along the band and dust clouds break it up; a few faint pink
-star-forming regions glow in it. Stars stand in front at three depths and
-drift with the band at slightly different rates (parallax).
+star-forming regions glow in it. The stars never move: each fades in, shines
+and fades out where it is, then comes back somewhere else; those in the band
+come back inside it, where the drifting band was when they appeared.
 
 The band is one baked panorama, PANORAMA_SCREENS screen widths around and
 seamless across its width, drifting slowly sideways: the sky turning, never a
@@ -24,12 +25,12 @@ import numpy as np
 from ..gfx import noise
 from ..gfx.canvas import BLEND, NONE
 from .base import Scene
-from .parts import StarField, common_sprites, density_count
+from .parts import FadingStars, candidates, common_sprites, density_count, scatter
 
 PANORAMA_SCREENS = 2.6        # the panorama is this many screen widths around
 SCREEN_SECONDS = 600.0        # Full motion: seconds for the band to drift one screen width
 GENTLE_DRIFT = 0.5            # Gentle motion: the drift at this fraction
-PARALLAX = (1.0, 1.12, 1.28)  # band stars, middle and near stars: drift times this
+BRIGHT_CYCLE = (30.0, 70.0)   # the few bright stars fade in and out more slowly
 CORE_AT = 0.32                # where the galactic core sits along the panorama (0..1)
 BAND_LEVEL = 0.62             # brightness of the band's light (the core peaks near 1)
 SKY_TOP, SKY_BOTTOM = (2, 3, 9), (6, 7, 15)
@@ -119,7 +120,7 @@ def panorama(rng: np.random.Generator, width: int, height: int, detail: int,
     chance = np.clip(light, 0, 1.3) * f32(0.07) + f32(0.004)
     points = (rng.random((height, width), dtype=f32) < chance) * rng.random((height, width),
                                                                              dtype=f32) ** 3
-    rgb = rgb * f32(BAND_LEVEL) + points[..., None] * f32(0.55)
+    rgb = rgb * f32(BAND_LEVEL) + points[..., None] * f32(0.3)        # a fine grain, not stars
     sky = (np.asarray(SKY_TOP, f32) + (np.asarray(SKY_BOTTOM, f32) - np.asarray(SKY_TOP, f32))
            * y[..., None]) / 255.0
     out = (sky + rgb) * 255.0 + rng.random((height, width, 1), dtype=f32) - 0.5   # dither
@@ -131,8 +132,8 @@ def panorama(rng: np.random.Generator, width: int, height: int, detail: int,
 
 class InsideGalaxy(Scene):
     id = "galaxy"
-    STARS = 900            # foreground stars at 1080p (two depths)
-    BAND_STARS = 700       # resolved stars in the band, drifting with it
+    STARS = 900            # stars anywhere in the sky, at 1080p
+    BAND_STARS = 700       # stars that appear inside the band
     BRIGHT = 14
 
     def prepare(self) -> None:
@@ -142,21 +143,20 @@ class InsideGalaxy(Scene):
         ph = max(64, int(round(h * scale)))
         pw = max(128, int(round(w * PANORAMA_SCREENS * scale)))
         self.panorama_px, light = panorama(ctx.rng("panorama"), pw, ph, q.detail, self.checkpoint)
-        # Resolved stars crowd into the band: positions in the panorama (0..1).
+        self.span = pw if self.software else w * PANORAMA_SCREENS   # the panorama's drawn width
+        # Stars never move; each fades in and out where it is. Band stars come back inside
+        # the band: at one of these places in the panorama, where it was when they appeared.
         brng = ctx.rng("band-stars")
-        weights = light.astype(np.float64).ravel() ** 1.6 + 1e-9
         n = max(16, int(self.BAND_STARS * q.stars))
-        picks = brng.choice(weights.size, n, p=weights / weights.sum())
-        self.band_x = ((picks % pw + brng.random(n)) / pw).astype(np.float32)
-        self.band_y = ((picks // pw + brng.random(n)) / ph).astype(np.float32)
-        self.band_stars = StarField(brng, 0, size=(1.2, 3.8), twinkle=0.3, saturation=0.45,
-                                    faintness=2.2, positions=(self.band_x, self.band_y))
+        self.band_x, self.band_y = candidates(brng, light ** 1.07, 4 * n)
+        self.pick = brng.random(n) * 100.0
+        self.band_stars = FadingStars(brng, n, size=(1.2, 3.8), saturation=0.45, faintness=2.2,
+                                      place=self._in_band)
         capacity, _ = density_count(self.STARS, q, 2.0)
-        self.middle = StarField(ctx.rng("middle"), capacity, size=(1.4, 5.0), twinkle=0.3,
-                                twinkle_speed=(0.08, 0.8), saturation=0.5)
-        self.near = StarField(ctx.rng("near"), self.BRIGHT, region=(0, 0.03, 1, 0.97),
-                              size=(11.0, 26.0), twinkle=0.25, twinkle_speed=(0.1, 0.6),
-                              saturation=0.45, faintness=1.2)
+        self.middle = FadingStars(ctx.rng("middle"), capacity, size=(1.4, 5.0), saturation=0.5)
+        self.near = FadingStars(ctx.rng("near"), self.BRIGHT, region=(0.02, 0.03, 0.98, 0.97),
+                                size=(11.0, 26.0), cycle=BRIGHT_CYCLE, saturation=0.45,
+                                faintness=1.2)
         if self.gentle:
             for field in (self.band_stars, self.middle, self.near):
                 field.calm()
@@ -175,10 +175,18 @@ class InsideGalaxy(Scene):
     def settings_changed(self, keys: set) -> bool:
         return "galaxy_view" in keys
 
-    def drift(self, t: float) -> float:
+    def drift(self, t):
         """How far the band has drifted, in pixels of the output (grows without bound)."""
         rate = self.width / SCREEN_SECONDS * (GENTLE_DRIFT if self.gentle else 1.0)
         return t * rate
+
+    def _in_band(self, stars: np.ndarray, cycles: np.ndarray, starts: np.ndarray) -> tuple:
+        """Where band stars appear for a cycle: a place in the band, as the band lay on
+        the screen when the cycle began (so the star stays still while it shines)."""
+        j = (scatter(cycles, self.pick[stars]) * len(self.band_x)).astype(np.int64)
+        span = self.span
+        x = (self.band_x[j] * span - self.drift(starts)) % span
+        return x / self.width, self.band_y[j]
 
     def draw(self, canvas) -> None:
         w, h, t = self.width, self.height, self.t
@@ -193,20 +201,11 @@ class InsideGalaxy(Scene):
             if part > 1.0 / 255:
                 canvas.tiled(texture, -whole - 1, 0, tw, th, alpha=int(round(255 * part)),
                              blend=BLEND)
-            span = tw
         else:
-            span = w * PANORAMA_SCREENS
-            canvas.tiled(texture, -offset, 0, span, h, blend=NONE)
+            canvas.tiled(texture, -offset, 0, self.span, h, blend=NONE)
         density = float(self.setting("star_density", 1.0))
-        # Band stars ride with the panorama; those not on screen are parked outside it.
-        bx = (self.band_x * np.float32(span) - np.float32(offset * PARALLAX[0])) % np.float32(span)
-        bx = np.where(bx < w + 8, bx, -64.0).astype(np.float32)
-        by = self.band_y * np.float32(h)
-        count = max(4, int(len(bx) * min(1.0, density)))
-        self.band_stars.draw(canvas, self.star_tex, t, w, h, count=count, positions=(bx, by),
-                             alpha=0.9)
+        count = max(4, int(self.band_stars.n * min(1.0, density)))
+        self.band_stars.draw(canvas, self.star_tex, t, w, h, count=count, alpha=0.9)
         _, middle = density_count(self.STARS, self.ctx.quality, density)
-        self.middle.draw(canvas, self.star_tex, t, w, h, count=middle,
-                         offset_x=-offset * PARALLAX[1], wrap=True, alpha=0.85)
-        self.near.draw(canvas, self.spike_tex, t, w, h, offset_x=-offset * PARALLAX[2], wrap=True,
-                       alpha=0.8)
+        self.middle.draw(canvas, self.star_tex, t, w, h, count=middle, alpha=0.85)
+        self.near.draw(canvas, self.spike_tex, t, w, h, alpha=0.8)

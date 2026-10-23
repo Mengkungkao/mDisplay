@@ -15,28 +15,11 @@ from ..gfx.batch import QuadBatch
 from ..gfx.canvas import ADD, NONE
 from ..gfx.palette import star_colors
 from .base import Scene
-from .parts import common_sprites, density_count, sky_gradient
+from .parts import FADE_CYCLE as CYCLE_SECONDS, FADE_LIT as LIT, FADE_RAMP as FADE  # noqa: F401
+from .parts import common_sprites, density_count, fade_envelope as envelope, scatter, sky_gradient
 
 SKY = [(0.0, (1, 2, 6)), (0.6, (2, 3, 9)), (1.0, (3, 5, 12))]
-CYCLE_SECONDS = (10.0, 28.0)   # one star: fade in, shine, fade out, rest dark
-LIT = 0.7                      # the part of its cycle a star is visible
-FADE = 0.35                    # of the lit part, spent fading in (and again fading out)
 HALO_SHARE = 0.04              # the brightest stars that carry a halo
-
-
-def envelope(phase: np.ndarray) -> np.ndarray:
-    """Brightness 0..1 over a cycle (0..1): a smooth rise, a hold, a smooth fall, dark."""
-    q = phase / LIT
-    rise = np.clip(q / FADE, 0, 1)
-    fall = np.clip((1.0 - q) / FADE, 0, 1)
-    level = np.minimum(rise, fall)
-    return np.where(q < 1.0, level * level * (3 - 2 * level), 0.0)
-
-
-def _scatter(index: np.ndarray, seed: np.ndarray) -> np.ndarray:
-    """A repeatable pseudo-random 0..1 for each (cycle index, star)."""
-    value = np.sin(index * 12.9898 + seed * 78.233) * 43758.5453
-    return value - np.floor(value)
 
 
 class StarlightScene(Scene):
@@ -74,8 +57,8 @@ class StarlightScene(Scene):
         cycles = t / self.period[:count] + self.phase[:count]
         index = np.floor(cycles)
         level = envelope(cycles - index)
-        x = _scatter(index, self.seed_x[:count])
-        y = _scatter(index + 0.5, self.seed_y[:count])
+        x = scatter(index, self.seed_x[:count])
+        y = scatter(index + 0.5, self.seed_y[:count])
         return x, y, level
 
     def draw(self, canvas) -> None:

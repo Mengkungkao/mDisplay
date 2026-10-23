@@ -14,7 +14,7 @@ from app.scenes import catalog
 from app.scenes import galaxy as galaxy_scene
 from app.scenes.base import QUALITY, SceneContext, resolve_motion
 from app.scenes import starlight
-from app.scenes.parts import StarField
+from app.scenes.parts import FadingStars, StarField
 
 
 def run(off, scene_id, gentle, seconds=1.0, step=0.1, **values):
@@ -94,6 +94,9 @@ class StillSkyTests(unittest.TestCase):
                 scene = (engine.current or engine.incoming).scene
                 self.assertIsNone(scene.meteors)
                 stars = scene.stars
+                if not hasattr(stars, "positions"):          # fading stars: see FadingStarsTests
+                    engine.close()
+                    continue
                 before = stars.positions(320, 180, stars.n, 0.0, 0.0, wrap=True)
                 for _ in range(100):                      # 10 s
                     clock.advance(0.1)
@@ -102,6 +105,50 @@ class StillSkyTests(unittest.TestCase):
                 after = stars.positions(320, 180, stars.n, 0.0, 0.0, wrap=True)
                 np.testing.assert_array_equal(before[0], after[0])
                 engine.close()
+
+
+class FadingStarsTests(unittest.TestCase):
+    """Galaxy (both views) and Night sky: stars never move; they fade in and out where
+    they are and come back elsewhere, in Full motion too (while the band drifts)."""
+
+    def setUp(self):
+        self.off = helpers.Offscreen(320, 180)
+
+    def tearDown(self):
+        self.off.close()
+
+    def fields(self, scene):
+        return [field for name in ("stars", "middle", "near", "band_stars", "bright")
+                for field in [getattr(scene, name, None)] if isinstance(field, FadingStars)]
+
+    def test_no_star_moves_while_it_shines(self):
+        for scene_id, values in (("galaxy", {}), ("galaxy", {"galaxy_view": "outside"}),
+                                 ("nightsky", {})):
+            with self.subTest(scene=scene_id, **values):
+                engine, _ = run(self.off, scene_id, gentle=False, seconds=0.1, **values)
+                scene = (engine.current or engine.incoming).scene
+                fields = self.fields(scene)
+                self.assertGreaterEqual(len(fields), 1 if values else 3)
+                for field in fields:
+                    moved = relocated = 0
+                    x0, y0, l0 = field.state(50.0, field.n)
+                    for step in range(1, 300):          # 30 s
+                        x1, y1, l1 = field.state(50.0 + step * 0.1, field.n)
+                        both = (l0 > 0) & (l1 > 0)
+                        moved += int(((x0 != x1) | (y0 != y1))[both].sum())
+                        relocated += int((x0 != x1).sum())
+                        x0, y0, l0 = x1, y1, l1
+                    self.assertEqual(moved, 0)
+                    self.assertGreater(relocated, 0)
+                engine.close()
+
+    def test_a_star_fades_in_and_out(self):
+        rng = np.random.default_rng(3)
+        field = FadingStars(rng, 200)
+        levels = np.array([field.state(t * 0.25, 200)[2] for t in range(400)])   # 100 s
+        self.assertEqual(levels.min(), 0.0)
+        self.assertAlmostEqual(levels.max(), 1.0, places=3)
+        self.assertLess(np.abs(np.diff(levels, axis=0)).max(), 0.2)   # smooth fades, no blinks
 
     def test_full_motion_keeps_its_meteors(self):
         for scene_id in ("nightsky", "minimal"):

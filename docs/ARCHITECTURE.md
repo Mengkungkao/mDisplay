@@ -61,7 +61,9 @@ rounds to whole pixels and has no custom blend modes; mDisplay detects both.
 Under mFruit OS an app must own the LCD while it runs (focus, first frame,
 SDK input). Showing the scenes there would waste the HDMI screen; showing
 nothing there would leave the user without controls. The LCD therefore shows
-what is on the HDMI screen (a thumbnail), the Scenes list and the settings.
+the name of the scene on the HDMI screen (not the scene itself: since 0.4.1 no
+thumbnail is drawn, which also spares the board), the Scenes list and the
+settings.
 Run by hand on a desktop there is no LCD, and the same settings appear as a
 panel on the HDMI screen. Both are built from one menu model
 (`app/controls.py`), so they cannot drift apart.

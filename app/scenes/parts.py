@@ -107,6 +107,117 @@ class StarField:
         return n
 
 
+# ----------------------------------------------------------- fading stars
+
+FADE_CYCLE = (10.0, 28.0)      # one star: fade in, shine, fade out, rest dark (seconds)
+FADE_LIT = 0.7                 # the part of its cycle a star is visible
+FADE_RAMP = 0.35               # of the lit part, spent fading in (and again fading out)
+
+
+def fade_envelope(phase: np.ndarray, lit: float = FADE_LIT, ramp: float = FADE_RAMP) -> np.ndarray:
+    """Brightness 0..1 over a cycle (0..1): a smooth rise, a hold, a smooth fall, dark."""
+    q = phase / lit
+    rise = np.clip(q / ramp, 0, 1)
+    fall = np.clip((1.0 - q) / ramp, 0, 1)
+    level = np.minimum(rise, fall)
+    return np.where(q < 1.0, level * level * (3 - 2 * level), 0.0)
+
+
+def scatter(index: np.ndarray, seed: np.ndarray) -> np.ndarray:
+    """A repeatable pseudo-random 0..1 for each (cycle index, star)."""
+    value = np.sin(index * 12.9898 + seed * 78.233) * 43758.5453
+    return value - np.floor(value)
+
+
+class FadingStars:
+    """Stars that never move: each fades in, shines a while and fades out on its own slow
+    cycle, then rests dark and comes back somewhere else, so the sky keeps changing
+    without anything travelling across it (and fades look the same at any frame rate).
+
+    ``place(stars, cycles, starts)`` may choose where each star comes back for a cycle
+    (normalised x, y; outside 0..1 is off screen), e.g. inside a drifting Milky Way as
+    it was when that cycle began; by default anywhere in ``region``, more often high up
+    with ``y_power`` > 1.
+    """
+
+    def __init__(self, rng: np.random.Generator, count: int, region=(0.0, 0.0, 1.0, 1.0),
+                 size=(1.3, 5.0), cycle=FADE_CYCLE, saturation: float = 0.45,
+                 warm: float = 0.5, faintness: float = 2.4, y_power: float = 1.0,
+                 place=None):
+        n = max(1, int(count))
+        self.n = n
+        self.region = region
+        self.period = rng.uniform(cycle[0], cycle[1], n)
+        self.phase = rng.random(n)
+        self.seed_x = rng.random(n) * 100.0
+        self.seed_y = rng.random(n) * 100.0
+        self.peak = (rng.random(n) ** faintness).astype(np.float32)       # most stars faint
+        self.colors = palette.star_colors(rng, n, saturation, warm)
+        self.size_lo, self.size_hi = size
+        self.y_power = y_power
+        self.place = place
+        self.batch = QuadBatch(n)
+        # Where each star is in its current cycle: worked out again only when it starts a
+        # new one (a few stars a frame), not for every star every frame.
+        self._cycle = np.full(n, np.nan)
+        self._x = np.zeros(n, np.float64)
+        self._y = np.zeros(n, np.float64)
+
+    def calm(self, factor: float = 0.6) -> "FadingStars":
+        """Gentle motion: slower fades."""
+        self.period = self.period / factor
+        self._cycle[:] = np.nan
+        return self
+
+    def state(self, t: float, count: int) -> tuple:
+        """(x, y, brightness 0..1) of the first ``count`` stars at time ``t``."""
+        n = max(0, min(self.n, int(count)))
+        cycles = t / self.period[:n] + self.phase[:n]
+        index = np.floor(cycles)
+        level = fade_envelope(cycles - index)
+        new = np.flatnonzero(index != self._cycle[:n])
+        if len(new):
+            k = index[new]
+            if self.place is not None:
+                starts = (k - self.phase[new]) * self.period[new]
+                x, y = self.place(new, k, starts)
+            else:
+                x0, y0, x1, y1 = self.region
+                x = x0 + (x1 - x0) * scatter(k, self.seed_x[new])
+                y = y0 + (y1 - y0) * scatter(k + 0.5, self.seed_y[new]) ** self.y_power
+            self._x[new], self._y[new], self._cycle[new] = x, y, k
+        return self._x[:n].copy(), self._y[:n].copy(), level
+
+    def draw(self, canvas: Canvas, texture: Texture, t: float, width: float, height: float,
+             count=None, alpha: float = 1.0, size_scale: float = 1.0, blend: int = ADD) -> int:
+        n = self.n if count is None else max(0, min(self.n, int(count)))
+        if n == 0 or alpha <= 0:
+            return 0
+        x, y, level = self.state(t, n)
+        lit = (level > 0.002) & (x > -0.05) & (x < 1.05)
+        if not lit.any():
+            return 0
+        unit = min(width, height) / 1080.0
+        peak = self.peak[:n][lit]
+        size = np.maximum(np.float32(1.6), np.float32(unit * size_scale)
+                          * (self.size_lo + (self.size_hi - self.size_lo) * peak ** 1.35))
+        a = ((30.0 + 225.0 * peak ** 0.55) * level[lit] * alpha).astype(np.float32)
+        self.batch.sprites((x[lit] * width).astype(np.float32), (y[lit] * height).astype(np.float32),
+                           size * 0.5, size * 0.5, self.colors[:n][lit], a)
+        self.batch.draw(canvas, texture, blend)
+        return int(lit.sum())
+
+
+def candidates(rng: np.random.Generator, weights: np.ndarray, count: int) -> tuple:
+    """(x, y) in 0..1 of ``count`` points drawn where ``weights`` (h, w) is high, e.g. the
+    brightness of a Milky Way, for stars that crowd into it."""
+    h, w = weights.shape
+    p = weights.astype(np.float64).ravel() ** 1.5 + 1e-12
+    picks = rng.choice(p.size, int(count), p=p / p.sum())
+    return ((picks % w + rng.random(len(picks))) / w).astype(np.float32), \
+        ((picks // w + rng.random(len(picks))) / h).astype(np.float32)
+
+
 def density_count(base: int, quality, density: float) -> tuple:
     """(capacity, drawn) star counts for a base count at 1080p."""
     capacity = max(8, int(base * quality.stars * 2.0))

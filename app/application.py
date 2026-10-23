@@ -905,23 +905,6 @@ class Application:
         if self.remote is not None:
             self.remote.refresh()
 
-    def thumbnail(self, width: int = 200):
-        """A small copy of the frame on screen (the LCD shows it); None if unavailable."""
-        if self.display is None or self.display.canvas is None or self.engine is None:
-            return None
-        try:
-            canvas = self.display.canvas
-            self.engine.draw(float(self.settings["brightness"]))
-            pixels = canvas.read_rgba()
-            from PIL import Image
-            image = Image.fromarray(pixels[..., :3])
-            height = max(1, int(width * image.height / max(1, image.width)))
-            self.redraw = True
-            return image.resize((width, height), Image.BILINEAR)
-        except Exception as exc:
-            log.debug("thumbnail failed: %s", exc)
-            return None
-
     # ------------------------------------------------------------- shutdown
     def _save_if_due(self, force: bool = False) -> None:
         if self.dirty_at is None:

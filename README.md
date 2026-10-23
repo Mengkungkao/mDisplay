@@ -7,8 +7,8 @@ graphics); no internet connection is needed.
 
 | Scene | What you see |
 |---|---|
-| Galaxy | From inside the galaxy, like a dark-sky photograph: the Milky Way's band across the sky, warmer and denser towards the core, broken by dark dust lanes, drifting slowly; stars at three depths (parallax). *Galaxy view: Outside* shows the earlier spiral galaxy turning, seen at an angle |
-| Night sky | Twinkling stars (each at its own rate, stronger near the horizon), the Milky Way, drifting clouds, a tree line, meteors |
+| Galaxy | From inside the galaxy, like a dark-sky photograph: the Milky Way's band across the sky, warmer and denser towards the core, broken by dark dust lanes, drifting slowly; the stars never move: they fade in and out where they are, those in the band appearing inside it. *Galaxy view: Outside* shows the earlier spiral galaxy turning, seen at an angle |
+| Night sky | Stars fading in and out where they are (fewer in the haze near the horizon), faint ones crowding into the Milky Way; clouds, a tree line, meteors (Full motion) |
 | Nebula | Layers of glowing gas drifting at different depths, colours slowly cycling blue, cyan, violet, pink, red (half the 0.2 speed; slower again in Gentle motion) |
 | Aurora | A great aurora over a lake, as in a long-exposure photograph: curtains sweeping across the sky with fine rays fanning towards the zenith, bright yellow-green low down, pink and magenta higher, lavender-white where they overlap, teal on the right, thin violet streaks high up; stars through it, a dark treeline of islands and the lake reflecting the light |
 | Starlight | A clear dark sky where stars slowly fade in, shine and fade out, then return elsewhere; nothing moves |
@@ -35,7 +35,7 @@ control.
 
 | Screen | tap | 2× | 3× | hold, then release | 4× |
 |---|---|---|---|---|---|
-| Home (now showing) | next scene | previous scene | pause / play | **Scenes** list | leave mDisplay |
+| Home (the scene's name; the scene itself is only on HDMI) | next scene | previous scene | pause / play | **Scenes** list | leave mDisplay |
 | Scenes | next row | previous row | pause / play | show that scene (or open Settings / Back) | back to Home |
 | Settings | next row | previous row | change backwards | change the value | back |
 

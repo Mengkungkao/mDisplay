@@ -8,15 +8,13 @@ feeds it the state.
 
 from __future__ import annotations
 
-from PIL import Image, ImageDraw
+from PIL import Image
 
 from mfruit_sdk.ui import Canvas, Row, draw_list, footer, message, status_bar, toast
 from mfruit_sdk.ui.theme import CONTENT_BOTTOM, CONTENT_TOP, MARGIN, SCREEN_W
 
 from ..controls import Item
 from ..scenes import catalog
-
-THUMB_W, THUMB_H = 212, 119
 
 # One table per screen: (gesture label, what it does). The remote's handlers
 # implement exactly these; the footer shows as many as fit, in this order.
@@ -30,39 +28,25 @@ LIST_HINTS = [("tap", "next"), ("hold", "open"), ("4×", "back"), ("2×", "previ
 DETAILS_HINTS = [("tap", "scroll"), ("4×", "back"), ("hold", "back")]
 
 
-def _rounded(image: Image.Image, radius: int) -> Image.Image:
-    mask = Image.new("L", image.size, 0)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, image.width - 1, image.height - 1), radius, fill=255)
-    out = Image.new("RGBA", image.size, (0, 0, 0, 0))
-    out.paste(image.convert("RGB"), (0, 0), mask)
-    return out
-
-
 def _hints(table: list, armed: bool, release: str) -> list:
     return [("release", release)] if armed else list(table)
 
 
-def home(state: dict, status=None, thumbnail=None, armed: bool = False, note: str = "") -> Image.Image:
-    """Now showing: a thumbnail of the HDMI screen, the scene, what happens next."""
+def home(state: dict, status=None, armed: bool = False, note: str = "") -> Image.Image:
+    """Now showing: the scene on the HDMI screen and what happens next. The LCD is the
+    remote only: it does not show the scene itself."""
     c = Canvas()
     t = c.theme
     status_bar(c, "mDisplay", status)
     scene_id = state.get("scene") or "galaxy"
-    x0 = (SCREEN_W - THUMB_W) // 2
-    y0 = CONTENT_TOP + 6
-    if thumbnail is not None:
-        thumb = _rounded(thumbnail.resize((THUMB_W, THUMB_H)), 12)
-        c.image.paste(thumb, (x0, y0), thumb)
-    else:
-        c.rounded((x0, y0, x0 + THUMB_W, y0 + THUMB_H), 12, fill=t.surface)
-        c.text(SCREEN_W // 2, y0 + THUMB_H // 2, "Loading…" if state.get("loading") else "HDMI",
-               13, "medium", t.text_faint, anchor="mm")
-    y = y0 + THUMB_H + 10
+    y = CONTENT_TOP + 14
     index = catalog.SCENE_IDS.index(scene_id) + 1 if scene_id in catalog.SCENE_IDS else 0
-    c.text(MARGIN, y, catalog.name(scene_id), 19, "bold", t.text, max_width=SCREEN_W - 2 * MARGIN - 40)
-    c.text(SCREEN_W - MARGIN, y + 4, f"{index}/{len(catalog.SCENE_IDS)}", 12, "medium",
+    c.text(MARGIN, y, "On the HDMI screen", 12, "medium", t.text_faint)
+    c.text(SCREEN_W - MARGIN, y, f"{index}/{len(catalog.SCENE_IDS)}", 12, "medium",
            t.text_faint, anchor="ra")
-    y += 26
+    y += 22
+    c.text(MARGIN, y, catalog.name(scene_id), 24, "bold", t.text, max_width=SCREEN_W - 2 * MARGIN)
+    y += 36
     line, tone = _activity(state)
     c.text(MARGIN, y, line, 13, "medium", t.warning if tone == "warning" else t.text_muted,
            max_width=SCREEN_W - 2 * MARGIN)

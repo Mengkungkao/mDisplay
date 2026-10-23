@@ -33,7 +33,6 @@ from .whisplay import WhisplayApp
 log = logging.getLogger("mdisplay.remote")
 
 NOTE_SECONDS = 2.0
-THUMB_DELAY = 0.6          # after a scene has faded in
 PROBLEM_CHOICES = ("Retry", "Details", "Back")
 
 # Keys typed on a keyboard (they arrive as characters through the SDK).
@@ -53,8 +52,6 @@ class Remote:
         self.armed = False
         self.note = ""
         self.note_until = 0.0
-        self.thumbnail = None
-        self.thumb_due: Optional[float] = None
         self.details_first = 0
         self.last_frame = None
         self.frames = 0
@@ -249,17 +246,14 @@ class Remote:
         self.note_until = self.clock() + NOTE_SECONDS
 
     def scene_started(self, scene_id: str) -> None:
-        seconds = float(self.app.settings["transition_seconds"])
-        self.thumb_due = self.clock() + seconds + THUMB_DELAY
+        self.draw()
 
     def next_refresh(self) -> float:
-        """Seconds until the remote needs the render thread (an expiring note, a thumbnail)."""
+        """Seconds until the remote needs the render thread (an expiring note)."""
         now = self.clock()
         due = [60.0]
         if self.note:
             due.append(max(0.0, self.note_until - now))
-        if self.thumb_due is not None:
-            due.append(max(0.0, self.thumb_due - now))
         return min(due)
 
     def refresh(self) -> None:
@@ -271,11 +265,6 @@ class Remote:
                 self._open("problem")
         elif self.screen in ("starting", "problem") and app.display is not None:
             self._open("home")
-        if self.thumb_due is not None and now >= self.thumb_due:
-            self.thumb_due = None
-            image = app.thumbnail(lcd.THUMB_W)
-            if image is not None:
-                self.thumbnail = image
         if self.note and now >= self.note_until:
             self.note = ""
         self.draw()
@@ -310,7 +299,7 @@ class Remote:
         if self.screen == "confirm":
             return lcd.confirm("Reset settings?", "Every mDisplay setting goes back to its default.",
                                self.index, status, self.armed)
-        return lcd.home(app.snapshot(), status, self.thumbnail, self.armed, note)
+        return lcd.home(app.snapshot(), status, self.armed, note)
 
     def _details_lines(self) -> list:
         app = self.app

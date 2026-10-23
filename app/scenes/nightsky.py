@@ -1,9 +1,10 @@
-"""Scene B — Night sky: twinkling stars, the Milky Way, drifting clouds, a horizon.
+"""Scene B — Night sky: stars fading in and out, the Milky Way, clouds, a horizon.
 
-Stars twinkle independently (two incommensurate rates per star) and more
-strongly near the horizon, where starlight crosses more air. The sky drifts
-slowly sideways; clouds drift faster, in front of it. This is an
-illustrative sky, not a map of the real one.
+The stars never move: each fades in, shines and fades out where it is, then
+comes back somewhere else (fewer low down in the haze); faint ones crowd into
+the Milky Way. In Full motion the Milky Way and the clouds drift slowly
+sideways; in Gentle the sky holds still. This is an illustrative sky, not a
+map of the real one.
 """
 
 from __future__ import annotations
@@ -13,9 +14,10 @@ import numpy as np
 from ..gfx import noise
 from ..gfx.canvas import ADD, BLEND, NONE
 from .base import Scene
-from .parts import (Grain, Meteors, StarField, add_trees, common_sprites, density_count,
-                    ridge_line, silhouette, sky_gradient)
+from .parts import (FadingStars, Grain, Meteors, add_trees, candidates, common_sprites,
+                    density_count, ridge_line, scatter, silhouette, sky_gradient)
 
+BRIGHT_CYCLE = (30.0, 70.0)    # the bright stars fade in and out more slowly
 SKY = [(0.0, (2, 4, 12)), (0.45, (5, 10, 26)), (0.78, (12, 24, 50)), (0.9, (26, 38, 64)),
        (1.0, (30, 40, 62))]
 
@@ -51,14 +53,15 @@ class NightSkyScene(Scene):
         else:
             mw_w, mw_h = max(128, int(w * 0.8 * tex)), max(64, int(h * 0.75 * tex))
         self.milkyway_px = milky_way(ctx.rng("milkyway"), mw_w, mw_h, q.detail)
-        # Faint stars crowd into the band, as they do in the real Milky Way.
+        # Faint stars crowd into the band, as they do in the real Milky Way. They never
+        # move: each fades in and out at one of these places, where the band was then.
         brng = ctx.rng("band-stars")
-        weights = self.milkyway_px[..., 3].astype(np.float64).ravel() ** 1.5
-        picks = brng.choice(weights.size, int(500 * q.stars), p=weights / weights.sum())
-        bx = (picks % mw_w + brng.random(len(picks))) / mw_w
-        by = -0.08 + 0.9 * (picks // mw_w + brng.random(len(picks))) / mw_h
-        self.band_stars = StarField(brng, 0, size=(1.2, 3.6), twinkle=0.3, saturation=0.4,
-                                    faintness=2.0, positions=(bx, by))
+        n = max(16, int(500 * q.stars))
+        self.band_x, band_y = candidates(brng, self.milkyway_px[..., 3] / 255.0, 4 * n)
+        self.band_y = -0.08 + 0.9 * band_y
+        self.pick = brng.random(n) * 100.0
+        self.band_stars = FadingStars(brng, n, size=(1.2, 3.6), saturation=0.4, faintness=2.0,
+                                      place=self._in_band)
         self.milkyway_px = self.fit(self.milkyway_px, w, h * 0.9)
         # Clouds: a tileable layer, dark where dense, faintly lit underneath
         # (light from towns below the horizon), faded at its top and bottom.
@@ -73,13 +76,13 @@ class NightSkyScene(Scene):
             self.cloud_far_px = self.fit(self.cloud_px, w * 1.2, h * 0.34)
             self.cloud_near_px = self.fit(self.cloud_px, w * 1.5, h * 0.374)
         capacity, _ = density_count(self.STARS, q, 2.0)
-        self.stars = StarField(ctx.rng("stars"), capacity, region=(0, 0, 1, 0.95),
-                               size=(1.5, 6.0), twinkle=0.45, twinkle_speed=(0.2, 1.6),
-                               saturation=0.55, y_weight=lambda yy: 1.0 - 0.5 * yy ** 3)
-        self.bright = StarField(ctx.rng("bright"), self.BRIGHT, region=(0, 0.02, 1, 0.8),
-                                size=(12.0, 30.0), twinkle=0.35, twinkle_speed=(0.3, 1.4),
-                                saturation=0.6, faintness=0.35)
-        # Gentle motion: nothing crosses the sky; the stars only fade and twinkle.
+        # Stars stay where they are and fade in and out (fewer down in the hazy horizon).
+        self.stars = FadingStars(ctx.rng("stars"), capacity, region=(0, 0, 1, 0.95),
+                                 size=(1.5, 6.0), saturation=0.55, y_power=1.3)
+        self.bright = FadingStars(ctx.rng("bright"), self.BRIGHT, region=(0.02, 0.02, 0.98, 0.8),
+                                  size=(12.0, 30.0), cycle=BRIGHT_CYCLE, saturation=0.6,
+                                  faintness=0.35)
+        # Gentle motion: nothing crosses the sky.
         self.meteors = None if self.gentle else Meteors(
             ctx.rng("meteors"), per_minute=1.5, max_active=2, min_gap=4.0,
             area=(0.05, 0.04, 0.95, 0.5))
@@ -117,11 +120,21 @@ class NightSkyScene(Scene):
             self.meteors.update(dt, float(self.setting("meteor_frequency", 1.0)), self.width,
                                 self.height * (1.0 - 0.2 * bool(self.horizon)))
 
+    def drift(self, t):
+        """The Milky Way's and the clouds' sideways drift in pixels (Full motion only)."""
+        return -t * 2.6 * self.unit * (0.0 if self.gentle else 1.0)
+
+    def _in_band(self, stars: np.ndarray, cycles: np.ndarray, starts: np.ndarray) -> tuple:
+        """Where band stars appear for a cycle: a place in the Milky Way, as it lay on the
+        screen when the cycle began (so the star stays still while it shines)."""
+        j = (scatter(cycles, self.pick[stars]) * len(self.band_x)).astype(np.int64)
+        return (self.band_x[j] + self.drift(starts) / self.width) % 1.0, self.band_y[j]
+
     def draw(self, canvas) -> None:
         w, h, t, u = self.width, self.height, self.t, self.unit
         canvas.image(self.gradient, 0, 0, w, h)
         moving = 0.0 if self.gentle else 1.0     # gentle: the sky holds still
-        drift = -t * 2.6 * u * moving
+        drift = self.drift(t)
         glow = float(self.setting("nebula_intensity", 1.0))
         if glow > 0:
             level = int(min(255, 150 * glow))
@@ -130,14 +143,10 @@ class NightSkyScene(Scene):
             canvas.tiled(self.milkyway, drift, -h * 0.08, mw_w, mw_h, color=(level,) * 3,
                          area=(0, 0, w, h))
         _, count = density_count(self.STARS, self.ctx.quality, float(self.setting("star_density", 1.0)))
-        sky_h = h
-        self.stars.draw(canvas, self.star_tex, t, w, sky_h, count=count, offset_x=drift, wrap=True,
-                        twinkle_scale=lambda py: 0.55 + 1.1 * np.clip(py / h, 0, 1) ** 2)
+        self.stars.draw(canvas, self.star_tex, t, w, h, count=count)
         if glow > 0:
-            self.band_stars.draw(canvas, self.star_tex, t, w, sky_h, offset_x=drift, wrap=True,
-                                 alpha=min(1.0, 0.8 * glow))
-        self.bright.draw(canvas, self.spike_tex, t, w, sky_h, offset_x=drift, wrap=True,
-                         alpha=0.85)
+            self.band_stars.draw(canvas, self.star_tex, t, w, h, alpha=min(1.0, 0.8 * glow))
+        self.bright.draw(canvas, self.spike_tex, t, w, h, alpha=0.85)
         if self.meteors is not None:
             self.meteors.draw(canvas, self.streak_tex, self.glow_tex, u)
         if self.cloud is not None:

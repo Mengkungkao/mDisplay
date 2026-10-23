@@ -2,6 +2,24 @@
 
 Versions follow the manifest. Each section becomes the GitHub release notes.
 
+## [0.4.1] - 2026-10-23
+
+- **Galaxy and Night sky: the stars fade in and out instead of moving.** Each
+  star stays where it is, fades in, shines a while and fades out, then comes
+  back somewhere else; in the Galaxy (both views) and the Night sky the faint
+  stars of the Milky Way appear inside the band, where it was when they
+  appeared, so they stay still even while the band drifts. The bright stars do
+  the same, more slowly. The galaxy's band keeps its slow drift; the faint
+  grain baked into it is dimmer, so it reads as texture, not moving stars.
+- **The Whisplay LCD no longer shows the scene.** The remote's home screen shows
+  the scene's name, what happens next and the HDMI mode; the small picture of
+  the HDMI screen is gone (it also cost the board a redraw at every scene start).
+- Shared part `FadingStars` (`app/scenes/parts.py`), also used by Starlight.
+- Measured on the Orange Pi Zero 2W with the stand-in HDMI output (monitor
+  disconnected): Galaxy 20 fps (was 24: its drawing is 35.6 ms, about half a
+  millisecond over what 24 fps needs), outside view 20, Night sky 15; frame
+  times even.
+
 ## [0.4.0] - 2026-10-23
 
 - **Aurora, made realistic** after the owner's reference photographs: a great

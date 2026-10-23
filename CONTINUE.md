@@ -31,6 +31,20 @@ App id `mdisplay`, name "mDisplay" (the owner named the project; the brief's
   Not done, and needing the owner's decision: one mFruit OS Home entry per
   scene (one manifest is one app; it would mean eight packages).
 
+## Session 2026-10-23 (4): still stars, no scene on the LCD (0.4.1)
+
+Owner: "no need display on small screen whisplay HAT display; for Galaxy and
+Nightsky make the stars fade in and out instead of moving".
+
+- Read as: remove the scene thumbnail from the LCD home (the LCD stays the
+  remote control: without it the scenes and settings cannot be chosen on the
+  device). If the owner meant something else, revisit.
+- `parts.FadingStars`: still stars with Starlight's lifecycle; used by both
+  Galaxy views, the Night sky and Starlight. Band stars come back inside the
+  drifting band where it was when their cycle began. The galaxy band itself
+  still drifts (the owner asked for that in Phase 1); the outside view's disk
+  stars still orbit with the galaxy.
+
 ## Session 2026-10-23 (3): realistic aurora, projector removed (0.4.0)
 
 The owner sent two photographs of a vivid aurora over a lake and asked for the
